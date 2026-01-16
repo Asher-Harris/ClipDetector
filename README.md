@@ -24,10 +24,11 @@ ClipDetector/
 │       ├── chat.py       # Chat hype moment detection
 │       └── fusion.py     # Signal fusion and clip ranking
 ├── frontend/             # Next.js React frontend
-│   └── src/app/          # App router pages
+│   └── src/app/          # App router pages (/, /review)
 ├── data/                 # Local data storage (git-ignored)
 │   ├── vods/             # Place VOD video files here
-│   └── chats/            # Place chat JSON files here
+│   ├── chats/            # Place chat JSON files here
+│   └── clips/            # Exported clips saved here
 └── README.md
 ```
 
@@ -81,9 +82,10 @@ The UI will be available at http://localhost:3000
 1. Download a Twitch VOD and its chat log
 2. Place the video file in `data/vods/`
 3. Place the chat JSON in `data/chats/`
-4. Process the VOD through the UI (coming soon)
-5. Review detected clip candidates
-6. Trim and export clips
+4. Open http://localhost:3000 and select your VOD and chat files
+5. Run analysis to detect clip candidates
+6. Review candidates at `/review` - approve, reject, and trim clips
+7. Export approved clips to `data/clips/`
 
 ## API Endpoints
 
@@ -235,6 +237,39 @@ curl -X POST http://localhost:8000/api/analyze/full \
 - Overlapping signals are combined with a 20% synergy bonus per additional signal type
 - Candidates within 30 seconds are deduplicated (highest score wins)
 - Results are sorted by score descending
+
+### Clip Export
+
+Export a clip segment from a VOD using FFmpeg:
+
+```bash
+curl -X POST http://localhost:8000/api/clips/export \
+  -H "Content-Type: application/json" \
+  -d '{
+    "vod_path": "vods/my_stream.mp4",
+    "start_time": 95.5,
+    "end_time": 155.5,
+    "output_filename": "my_clip.mp4"
+  }'
+```
+
+**Parameters:**
+- `vod_path` (required): Path to VOD file relative to `/data` folder
+- `start_time` (required): Start timestamp in seconds
+- `end_time` (required): End timestamp in seconds
+- `output_filename` (required): Output filename (saved to `data/clips/`)
+
+**Response:**
+```json
+{
+  "success": true,
+  "output_path": "clips/my_clip.mp4",
+  "duration": 60.0,
+  "file_size": 12345678
+}
+```
+
+Uses stream copy (`-c copy`) for fast extraction, falling back to re-encoding if needed.
 
 ## Development
 

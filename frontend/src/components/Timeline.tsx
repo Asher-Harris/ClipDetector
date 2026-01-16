@@ -34,7 +34,7 @@ export function Timeline({
 
   if (duration === 0) return null;
 
-  const timeToPercent = (time: number) => (time / duration) * 100;
+  const timeToPercent = (time: number) => Math.min(100, Math.max(0, (time / duration) * 100));
 
   const handleClick = (e: React.MouseEvent) => {
     const rect = containerRef.current?.getBoundingClientRect();
@@ -71,7 +71,7 @@ export function Timeline({
             className="absolute top-0 bottom-0 bg-blue-600/30"
             style={{
               left: `${timeToPercent(trimStart)}%`,
-              width: `${timeToPercent(trimEnd - trimStart)}%`,
+              width: `${timeToPercent(Math.min(trimEnd, duration)) - timeToPercent(trimStart)}%`,
             }}
           />
         )}

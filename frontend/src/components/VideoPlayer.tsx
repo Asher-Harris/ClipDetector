@@ -47,8 +47,8 @@ function VideoPlayerInner({
 
   const videoUrl = getVideoUrl(vodPath);
 
-  // Convert time to percentage
-  const timeToPercent = (time: number) => (duration > 0 ? (time / duration) * 100 : 0);
+  // Convert time to percentage (clamped to 0-100)
+  const timeToPercent = (time: number) => (duration > 0 ? Math.min(100, Math.max(0, (time / duration) * 100)) : 0);
 
   // Convert percentage to time
   const percentToTime = (percent: number) => (percent / 100) * duration;
@@ -67,7 +67,6 @@ function VideoPlayerInner({
   const handleTimeUpdate = useCallback(() => {
     const video = videoRef.current;
     if (video && lastSeekTime.current === null) {
-      console.log('[handleTimeUpdate] video.currentTime =', video.currentTime);
       setInternalTime(video.currentTime);
       onTimeUpdate(video.currentTime);
     }
@@ -86,7 +85,6 @@ function VideoPlayerInner({
     const video = videoRef.current;
     if (video && duration > 0) {
       const clampedTime = Math.max(0, Math.min(duration, time));
-      console.log('[seekTo] seeking to', clampedTime, 'from', video.currentTime);
       lastSeekTime.current = clampedTime;
       video.currentTime = clampedTime;
       setInternalTime(clampedTime);
@@ -98,10 +96,8 @@ function VideoPlayerInner({
   // Only sync when parent's currentTime actually changes, not when internalTime changes
   useEffect(() => {
     if (duration > 0 && currentTime !== prevExternalTimeRef.current) {
-      console.log('[externalSync] currentTime changed from', prevExternalTimeRef.current, 'to', currentTime, 'internalTime=', internalTime);
       // Parent requested a seek - only apply if significantly different
       if (Math.abs(internalTime - currentTime) > 1) {
-        console.log('[externalSync] seeking to', currentTime);
         seekTo(currentTime);
       }
       prevExternalTimeRef.current = currentTime;
@@ -170,40 +166,29 @@ function VideoPlayerInner({
     const video = videoRef.current;
     if (!video) return;
 
-    console.log('[togglePlay] called', {
-      isPlaying,
-      internalTime,
-      'video.currentTime': video.currentTime,
-      trimStart,
-      trimEnd,
-    });
-
     try {
       if (isPlaying) {
         video.pause();
         setIsPlaying(false);
       } else {
-        // If video is out of sync with our state, seek and wait for it to complete
-        if (Math.abs(video.currentTime - internalTime) > 0.5) {
-          console.log('[togglePlay] syncing video to internalTime', internalTime);
+        const videoOutOfSync = Math.abs(video.currentTime - internalTime) > 0.5;
+        if (videoOutOfSync) {
           video.currentTime = internalTime;
-          // Wait for seek to complete before playing
           await new Promise<void>((resolve) => {
             const onSeeked = () => {
               video.removeEventListener('seeked', onSeeked);
-              console.log('[togglePlay] seek completed, video.currentTime=', video.currentTime);
               resolve();
             };
             video.addEventListener('seeked', onSeeked);
           });
         }
 
-        console.log('[togglePlay] about to play, video.currentTime =', video.currentTime);
         await video.play();
         setIsPlaying(true);
       }
     } catch (err) {
-      if (err instanceof Error && err.name !== "AbortError") {
+      const isAbortError = err instanceof Error && err.name === "AbortError";
+      if (!isAbortError) {
         console.error("Playback error:", err);
       }
     }
@@ -284,7 +269,7 @@ function VideoPlayerInner({
             className="absolute top-1/2 -translate-y-1/2 h-2 bg-blue-600/40 rounded-full"
             style={{
               left: `${trimStartPercent}%`,
-              width: `${trimEndPercent - trimStartPercent}%`,
+              width: `${Math.min(100, trimEndPercent) - trimStartPercent}%`,
             }}
           />
 
