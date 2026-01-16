@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 from analyzers.audio import analyze_audio, AnalysisConfig, AudioSpike
 from analyzers.chat import analyze_chat, ChatMoment
+from analyzers.fusion import analyze_full, FusionConfig, ClipCandidate
 
 app = FastAPI(title="ClipDetector API", version="0.1.0")
 
@@ -175,4 +176,123 @@ async def analyze_chat_endpoint(request: ChatAnalysisRequest):
             for m in moments
         ],
         total_moments=len(moments),
+    )
+
+
+class FullAnalysisRequest(BaseModel):
+    video_path: str = Field(..., description="Path to video file relative to /data folder")
+    chat_path: str = Field(..., description="Path to chat JSON file relative to /data folder")
+    overlap_window: float = Field(
+        default=10.0,
+        ge=1.0,
+        le=60.0,
+        description="Signals within this many seconds are considered overlapping"
+    )
+    clip_buffer: float = Field(
+        default=30.0,
+        ge=5.0,
+        le=120.0,
+        description="Seconds before and after the moment to include in clip"
+    )
+
+
+class ClipCandidateResult(BaseModel):
+    timestamp: float
+    score: float
+    signals: list[str]
+    clip_start: float
+    clip_end: float
+
+
+class FullAnalysisResponse(BaseModel):
+    video_path: str
+    chat_path: str
+    candidates: list[ClipCandidateResult]
+    total_candidates: int
+    config: dict
+
+
+def resolve_safe_path(relative_path: str, data_dir: Path) -> Path:
+    """Resolve a relative path and verify it's within the data directory."""
+    full_path = data_dir / relative_path
+    try:
+        full_path = full_path.resolve()
+        data_dir_resolved = data_dir.resolve()
+        if not str(full_path).startswith(str(data_dir_resolved)):
+            raise ValueError("Path traversal detected")
+    except Exception:
+        raise ValueError("Invalid path")
+    return full_path
+
+
+@app.post("/api/analyze/full", response_model=FullAnalysisResponse)
+async def analyze_full_endpoint(request: FullAnalysisRequest):
+    """Run full analysis pipeline: audio + chat + fusion.
+
+    Analyzes both video (for audio spikes) and chat (for velocity/emote moments),
+    then fuses the signals to produce ranked clip candidates.
+
+    File paths should be relative to the /data folder.
+    Example: video_path="vods/my_stream.mp4", chat_path="chats/my_stream_chat.json"
+    """
+    # Resolve and validate paths
+    try:
+        video_path = resolve_safe_path(request.video_path, DATA_DIR)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid video path")
+
+    try:
+        chat_path = resolve_safe_path(request.chat_path, DATA_DIR)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid chat path")
+
+    if not video_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Video file not found: {request.video_path}"
+        )
+
+    if not chat_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Chat file not found: {request.chat_path}"
+        )
+
+    # Build fusion config from request
+    fusion_config = FusionConfig(
+        overlap_window=request.overlap_window,
+        clip_buffer=request.clip_buffer,
+    )
+
+    try:
+        candidates = analyze_full(video_path, chat_path, fusion_config=fusion_config)
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid chat JSON file: {e}")
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    return FullAnalysisResponse(
+        video_path=request.video_path,
+        chat_path=request.chat_path,
+        candidates=[
+            ClipCandidateResult(
+                timestamp=c.timestamp,
+                score=c.score,
+                signals=c.signals,
+                clip_start=c.clip_start,
+                clip_end=c.clip_end,
+            )
+            for c in candidates
+        ],
+        total_candidates=len(candidates),
+        config={
+            "overlap_window": fusion_config.overlap_window,
+            "clip_buffer": fusion_config.clip_buffer,
+            "dedup_window": fusion_config.dedup_window,
+            "audio_weight": fusion_config.audio_weight,
+            "velocity_weight": fusion_config.velocity_weight,
+            "emote_weight": fusion_config.emote_weight,
+        }
     )

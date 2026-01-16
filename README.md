@@ -21,7 +21,8 @@ ClipDetector/
 │   ├── requirements.txt
 │   └── analyzers/        # Analysis modules
 │       ├── audio.py      # Audio spike detection
-│       └── chat.py       # Chat hype moment detection
+│       ├── chat.py       # Chat hype moment detection
+│       └── fusion.py     # Signal fusion and clip ranking
 ├── frontend/             # Next.js React frontend
 │   └── src/app/          # App router pages
 ├── data/                 # Local data storage (git-ignored)
@@ -42,9 +43,9 @@ ClipDetector/
 
 ```bash
 cd backend
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install -r requirements.txt
+python3 -m venv venv
+source venv/bin/activate
+pip3 install -r requirements.txt
 ```
 
 ### Frontend
@@ -170,6 +171,70 @@ curl -X POST http://localhost:8000/api/analyze/chat \
 **Moment types:**
 - `velocity_spike`: Sudden increase in messages per second compared to rolling baseline
 - `emote_flood`: High concentration of emotes in a time window (50%+ of messages contain emotes)
+
+### Full Analysis (Fusion)
+
+Run the complete pipeline: audio analysis + chat analysis + signal fusion to get ranked clip candidates:
+
+```bash
+# Basic usage
+curl -X POST http://localhost:8000/api/analyze/full \
+  -H "Content-Type: application/json" \
+  -d '{
+    "video_path": "vods/my_stream.mp4",
+    "chat_path": "chats/my_stream_chat.json"
+  }'
+
+# With custom parameters
+curl -X POST http://localhost:8000/api/analyze/full \
+  -H "Content-Type: application/json" \
+  -d '{
+    "video_path": "vods/my_stream.mp4",
+    "chat_path": "chats/my_stream_chat.json",
+    "overlap_window": 10.0,
+    "clip_buffer": 30.0
+  }'
+```
+
+**Parameters:**
+- `video_path` (required): Path to video file relative to `/data` folder
+- `chat_path` (required): Path to chat JSON file relative to `/data` folder
+- `overlap_window` (default: 10.0): Signals within this many seconds are combined
+- `clip_buffer` (default: 30.0): Seconds before and after the moment to include
+
+**Response:**
+```json
+{
+  "video_path": "vods/my_stream.mp4",
+  "chat_path": "chats/my_stream_chat.json",
+  "candidates": [
+    {
+      "timestamp": 125.5,
+      "score": 4.32,
+      "signals": ["audio", "velocity_spike", "emote_flood"],
+      "clip_start": 95.5,
+      "clip_end": 155.5
+    },
+    {
+      "timestamp": 342.1,
+      "score": 2.1,
+      "signals": ["audio"],
+      "clip_start": 312.1,
+      "clip_end": 372.1
+    }
+  ],
+  "total_candidates": 2,
+  "config": {...}
+}
+```
+
+**Scoring:**
+- Audio spikes: base weight 1.0 × intensity
+- Chat velocity spikes: base weight 1.5 × intensity (strong signal)
+- Emote floods: base weight 1.0 × intensity
+- Overlapping signals are combined with a 20% synergy bonus per additional signal type
+- Candidates within 30 seconds are deduplicated (highest score wins)
+- Results are sorted by score descending
 
 ## Development
 
