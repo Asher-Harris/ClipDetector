@@ -131,13 +131,16 @@ function VideoPlayerInner({
     if (currentTime !== prevExternalTimeRef.current) {
       prevExternalTimeRef.current = currentTime;
       if (duration > 0) {
-        seekTo(currentTime);
+        // Only seek if significantly different to avoid micro-seeks during playback
+        if (Math.abs(internalTime - currentTime) > 1) {
+          seekTo(currentTime);
+        }
       } else {
         // Video not loaded yet, store pending seek
         pendingSeekRef.current = currentTime;
       }
     }
-  }, [currentTime, duration, seekTo]);
+  }, [currentTime, duration, internalTime, seekTo]);
 
   // Apply pending seek once video loads
   useEffect(() => {
