@@ -1,8 +1,11 @@
 import json
+import os
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from analyzers.audio import analyze_audio, AnalysisConfig, AudioSpike
@@ -21,6 +24,98 @@ app.add_middleware(
 
 # Base path for data files
 DATA_DIR = Path(__file__).parent.parent / "data"
+
+
+def get_content_type(file_path: Path) -> str:
+    """Get MIME type based on file extension."""
+    ext = file_path.suffix.lower()
+    content_types = {
+        ".mp4": "video/mp4",
+        ".mkv": "video/x-matroska",
+        ".webm": "video/webm",
+        ".mov": "video/quicktime",
+    }
+    return content_types.get(ext, "application/octet-stream")
+
+
+@app.get("/data/vods/{filename:path}")
+async def stream_video(filename: str, request: Request):
+    """Stream video with Range request support for seeking."""
+    video_path = DATA_DIR / "vods" / filename
+
+    # Security check
+    try:
+        video_path = video_path.resolve()
+        data_dir_resolved = DATA_DIR.resolve()
+        if not str(video_path).startswith(str(data_dir_resolved)):
+            raise HTTPException(status_code=400, detail="Invalid file path")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid file path")
+
+    if not video_path.exists():
+        raise HTTPException(status_code=404, detail="Video not found")
+
+    file_size = video_path.stat().st_size
+    content_type = get_content_type(video_path)
+
+    # Parse Range header
+    range_header = request.headers.get("range")
+
+    if range_header:
+        # Parse "bytes=start-end" format
+        range_match = range_header.replace("bytes=", "").split("-")
+        start = int(range_match[0]) if range_match[0] else 0
+        end = int(range_match[1]) if range_match[1] else file_size - 1
+
+        # Clamp values
+        start = max(0, min(start, file_size - 1))
+        end = max(start, min(end, file_size - 1))
+        content_length = end - start + 1
+
+        def iter_file():
+            with open(video_path, "rb") as f:
+                f.seek(start)
+                remaining = content_length
+                chunk_size = 1024 * 1024  # 1MB chunks
+                while remaining > 0:
+                    read_size = min(chunk_size, remaining)
+                    data = f.read(read_size)
+                    if not data:
+                        break
+                    remaining -= len(data)
+                    yield data
+
+        return StreamingResponse(
+            iter_file(),
+            status_code=206,
+            media_type=content_type,
+            headers={
+                "Content-Range": f"bytes {start}-{end}/{file_size}",
+                "Accept-Ranges": "bytes",
+                "Content-Length": str(content_length),
+            },
+        )
+    else:
+        # No Range header - serve full file
+        def iter_full_file():
+            with open(video_path, "rb") as f:
+                chunk_size = 1024 * 1024  # 1MB chunks
+                while chunk := f.read(chunk_size):
+                    yield chunk
+
+        return StreamingResponse(
+            iter_full_file(),
+            media_type=content_type,
+            headers={
+                "Accept-Ranges": "bytes",
+                "Content-Length": str(file_size),
+            },
+        )
+
+
+# Serve other static files (non-video)
+if DATA_DIR.exists():
+    app.mount("/data", StaticFiles(directory=DATA_DIR), name="data")
 
 
 class AudioAnalysisRequest(BaseModel):
@@ -73,6 +168,38 @@ class ChatAnalysisResponse(BaseModel):
 @app.get("/health")
 async def health_check():
     return {"status": "healthy", "service": "clipdetector-api"}
+
+
+class FileListResponse(BaseModel):
+    vods: list[str]
+    chats: list[str]
+
+
+@app.get("/api/files", response_model=FileListResponse)
+async def list_files():
+    """List available VOD and chat files."""
+    vods_dir = DATA_DIR / "vods"
+    chats_dir = DATA_DIR / "chats"
+
+    vod_files = []
+    chat_files = []
+
+    if vods_dir.exists():
+        vod_files = [
+            f.name for f in vods_dir.iterdir()
+            if f.is_file() and f.suffix.lower() in {".mp4", ".mkv", ".webm", ".mov"}
+        ]
+
+    if chats_dir.exists():
+        chat_files = [
+            f.name for f in chats_dir.iterdir()
+            if f.is_file() and f.suffix.lower() == ".json"
+        ]
+
+    return FileListResponse(
+        vods=sorted(vod_files),
+        chats=sorted(chat_files),
+    )
 
 
 @app.post("/api/analyze/audio", response_model=AudioAnalysisResponse)
