@@ -11,8 +11,10 @@ node_modules/
 # Data files (keep structure, ignore contents)
 data/vods/*
 data/chats/*
+data/clips/*
 !data/vods/.gitkeep
 !data/chats/.gitkeep
+!data/clips/.gitkeep
 
 # OS
 .DS_Store

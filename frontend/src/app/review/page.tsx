@@ -142,7 +142,7 @@ export default function ReviewPage() {
             </p>
           </div>
           <div className="flex items-center gap-3">
-            <ExportButton clips={clipsWithStatus} vodFilename={vodFilename} />
+            <ExportButton clips={clipsWithStatus} vodFilename={vodFilename} vodPath={analysisResult.videoPath} />
             <Button variant="secondary" onClick={handleNewAnalysis}>
               New Analysis
             </Button>

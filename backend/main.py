@@ -1,5 +1,6 @@
 import json
 import os
+import subprocess
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
@@ -422,4 +423,131 @@ async def analyze_full_endpoint(request: FullAnalysisRequest):
             "velocity_weight": fusion_config.velocity_weight,
             "emote_weight": fusion_config.emote_weight,
         }
+    )
+
+
+class ClipExportRequest(BaseModel):
+    vod_path: str = Field(..., description="Path to VOD file relative to /data folder")
+    start_time: float = Field(..., ge=0, description="Start timestamp in seconds")
+    end_time: float = Field(..., gt=0, description="End timestamp in seconds")
+    output_filename: str = Field(..., description="Output filename (without path)")
+
+
+class ClipExportResponse(BaseModel):
+    success: bool
+    output_path: str
+    duration: float
+    file_size: int
+
+
+@app.post("/api/clips/export", response_model=ClipExportResponse)
+async def export_clip(request: ClipExportRequest):
+    """Export a clip segment from a VOD using FFmpeg.
+
+    Uses stream copy (-c copy) for fast extraction.
+    """
+    # Validate VOD path
+    try:
+        vod_path = resolve_safe_path(request.vod_path, DATA_DIR)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid VOD path")
+
+    if not vod_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"VOD file not found: {request.vod_path}"
+        )
+
+    # Validate timestamps
+    if request.end_time <= request.start_time:
+        raise HTTPException(
+            status_code=400,
+            detail="End time must be greater than start time"
+        )
+
+    # Ensure clips directory exists
+    clips_dir = DATA_DIR / "clips"
+    clips_dir.mkdir(parents=True, exist_ok=True)
+
+    # Sanitize output filename
+    safe_filename = "".join(
+        c for c in request.output_filename
+        if c.isalnum() or c in "._-"
+    )
+    if not safe_filename.endswith(".mp4"):
+        safe_filename += ".mp4"
+
+    output_path = clips_dir / safe_filename
+
+    # Build FFmpeg command
+    duration = request.end_time - request.start_time
+    cmd = [
+        "ffmpeg",
+        "-y",  # Overwrite output
+        "-ss", str(request.start_time),  # Seek to start (before -i for fast seek)
+        "-i", str(vod_path),
+        "-t", str(duration),
+        "-c", "copy",  # Stream copy for speed
+        "-avoid_negative_ts", "make_zero",
+        str(output_path),
+    ]
+
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=300,  # 5 minute timeout
+        )
+
+        if result.returncode != 0:
+            # If stream copy fails, try re-encoding
+            cmd_reencode = [
+                "ffmpeg",
+                "-y",
+                "-ss", str(request.start_time),
+                "-i", str(vod_path),
+                "-t", str(duration),
+                "-c:v", "libx264",
+                "-preset", "fast",
+                "-c:a", "aac",
+                str(output_path),
+            ]
+            result = subprocess.run(
+                cmd_reencode,
+                capture_output=True,
+                text=True,
+                timeout=600,  # 10 minute timeout for re-encoding
+            )
+
+            if result.returncode != 0:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"FFmpeg failed: {result.stderr[:500]}"
+                )
+
+    except subprocess.TimeoutExpired:
+        raise HTTPException(
+            status_code=500,
+            detail="Export timed out - clip may be too long"
+        )
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=500,
+            detail="FFmpeg not found - please install FFmpeg"
+        )
+
+    if not output_path.exists():
+        raise HTTPException(
+            status_code=500,
+            detail="Export failed - output file not created"
+        )
+
+    file_size = output_path.stat().st_size
+
+    return ClipExportResponse(
+        success=True,
+        output_path=f"clips/{safe_filename}",
+        duration=duration,
+        file_size=file_size,
     )

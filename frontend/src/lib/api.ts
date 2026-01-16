@@ -1,4 +1,4 @@
-import type { FileListResponse, FullAnalysisResponse } from "./types";
+import type { FileListResponse, FullAnalysisResponse, ClipExportRequest, ClipExportResponse } from "./types";
 
 const API_BASE = "http://localhost:8000";
 
@@ -59,4 +59,19 @@ export async function runFullAnalysis(
 // Get video URL for playback
 export function getVideoUrl(vodPath: string): string {
   return `${API_BASE}/data/${vodPath}`;
+}
+
+// Export a clip using FFmpeg
+export async function exportClip(
+  request: ClipExportRequest
+): Promise<ClipExportResponse> {
+  return apiRequest("/api/clips/export", {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
+}
+
+// Get URL for exported clip
+export function getClipUrl(clipPath: string): string {
+  return `${API_BASE}/data/${clipPath}`;
 }

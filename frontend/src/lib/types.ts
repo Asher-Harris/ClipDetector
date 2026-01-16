@@ -64,3 +64,25 @@ export const SIGNAL_COLORS: Record<SignalType, string> = {
 export function generateClipId(candidate: ClipCandidateResult): string {
   return `clip_${candidate.timestamp.toFixed(2)}_${candidate.score.toFixed(2)}`;
 }
+
+// Clip Export Types
+export type ClipExportRequest = {
+  vod_path: string;
+  start_time: number;
+  end_time: number;
+  output_filename: string;
+};
+
+export type ClipExportResponse = {
+  success: boolean;
+  output_path: string;
+  duration: number;
+  file_size: number;
+};
+
+export type ExportResult = {
+  clipId: string;
+  status: "success" | "error";
+  outputPath?: string;
+  error?: string;
+};
