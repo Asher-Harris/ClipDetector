@@ -45,13 +45,43 @@ function VideoPlayerInner({
     target: "start" | "end" | "playhead" | null;
   }>({ isDragging: false, target: null });
 
+  // Zoom state: 1 = full timeline, 2 = 50% visible, etc.
+  const [zoom, setZoom] = useState(1);
+  // Viewport center as percentage of total duration (0-100)
+  const [viewportCenter, setViewportCenter] = useState(50);
+
   const videoUrl = getVideoUrl(vodPath);
 
-  // Convert time to percentage (clamped to 0-100)
-  const timeToPercent = (time: number) => (duration > 0 ? Math.min(100, Math.max(0, (time / duration) * 100)) : 0);
+  // Calculate viewport boundaries based on zoom
+  const visiblePercent = 100 / zoom;
+  const halfVisible = visiblePercent / 2;
+  // Clamp viewport so it doesn't go past edges
+  const clampedCenter = Math.max(halfVisible, Math.min(100 - halfVisible, viewportCenter));
+  const viewportStart = clampedCenter - halfVisible;
+  const viewportEnd = clampedCenter + halfVisible;
 
-  // Convert percentage to time
-  const percentToTime = (percent: number) => (percent / 100) * duration;
+  // Convert time to global percentage (0-100 of full duration)
+  const timeToGlobalPercent = (time: number) => (duration > 0 ? (time / duration) * 100 : 0);
+
+  // Keep viewport centered on playhead when zoomed
+  useEffect(() => {
+    if (zoom > 1 && duration > 0) {
+      const playheadPercent = (internalTime / duration) * 100;
+      setViewportCenter(playheadPercent);
+    }
+  }, [zoom, internalTime, duration]);
+
+  // Convert time to viewport percentage (position within visible area)
+  const timeToViewportPercent = (time: number) => {
+    const globalPercent = timeToGlobalPercent(time);
+    return ((globalPercent - viewportStart) / visiblePercent) * 100;
+  };
+
+  // Convert viewport percentage to time
+  const viewportPercentToTime = (viewportPercent: number) => {
+    const globalPercent = viewportStart + (viewportPercent / 100) * visiblePercent;
+    return (globalPercent / 100) * duration;
+  };
 
   // Handle metadata loaded
   const handleLoadedMetadata = useCallback(() => {
@@ -92,17 +122,30 @@ function VideoPlayerInner({
     }
   }, [duration, onSeek]);
 
+  // Pending seek for when video isn't loaded yet - initialize with currentTime
+  // so we seek to the right position when the video first loads
+  const pendingSeekRef = useRef<number | null>(currentTime);
+
   // Handle external seek requests (when clip is selected)
-  // Only sync when parent's currentTime actually changes, not when internalTime changes
   useEffect(() => {
-    if (duration > 0 && currentTime !== prevExternalTimeRef.current) {
-      // Parent requested a seek - only apply if significantly different
-      if (Math.abs(internalTime - currentTime) > 1) {
-        seekTo(currentTime);
-      }
+    if (currentTime !== prevExternalTimeRef.current) {
       prevExternalTimeRef.current = currentTime;
+      if (duration > 0) {
+        seekTo(currentTime);
+      } else {
+        // Video not loaded yet, store pending seek
+        pendingSeekRef.current = currentTime;
+      }
     }
-  }, [currentTime, duration, internalTime, seekTo]);
+  }, [currentTime, duration, seekTo]);
+
+  // Apply pending seek once video loads
+  useEffect(() => {
+    if (duration > 0 && pendingSeekRef.current !== null) {
+      seekTo(pendingSeekRef.current);
+      pendingSeekRef.current = null;
+    }
+  }, [duration, seekTo]);
 
   // Mouse move handler for dragging
   const handleMouseMove = useCallback((e: MouseEvent) => {
@@ -110,8 +153,8 @@ function VideoPlayerInner({
 
     const rect = progressRef.current.getBoundingClientRect();
     const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
-    const percent = (x / rect.width) * 100;
-    const time = percentToTime(percent);
+    const viewportPercent = (x / rect.width) * 100;
+    const time = viewportPercentToTime(viewportPercent);
 
     if (dragState.target === "start") {
       const constrainedTime = Math.max(0, Math.min(time, trimEnd - MIN_CLIP_DURATION));
@@ -123,7 +166,7 @@ function VideoPlayerInner({
       seekTo(time);
       onTimeUpdate(time);
     }
-  }, [dragState, duration, trimStart, trimEnd, onTrimStartChange, onTrimEndChange, seekTo, onTimeUpdate]);
+  }, [dragState, duration, trimStart, trimEnd, onTrimStartChange, onTrimEndChange, seekTo, onTimeUpdate, viewportStart, visiblePercent]);
 
   // Mouse up handler
   const handleMouseUp = useCallback(() => {
@@ -149,11 +192,11 @@ function VideoPlayerInner({
     if (!rect || duration === 0) return;
 
     const x = e.clientX - rect.left;
-    const percent = (x / rect.width) * 100;
-    const time = percentToTime(percent);
+    const viewportPercent = (x / rect.width) * 100;
+    const time = viewportPercentToTime(viewportPercent);
     seekTo(time);
     onTimeUpdate(time);
-  }, [dragState.isDragging, duration, seekTo, onTimeUpdate]);
+  }, [dragState.isDragging, duration, seekTo, onTimeUpdate, viewportStart, visiblePercent]);
 
   // Start dragging a handle
   const startDrag = (target: "start" | "end" | "playhead") => (e: React.MouseEvent) => {
@@ -222,10 +265,74 @@ function VideoPlayerInner({
     onTimeUpdate(Math.max(trimStart, trimEnd - 1));
   }, [trimStart, trimEnd, seekTo, onTimeUpdate]);
 
+  // Zoom controls
+  const MAX_ZOOM = 32;
+
+  const zoomIn = useCallback(() => {
+    setZoom(z => Math.min(MAX_ZOOM, z * 2));
+  }, []);
+
+  const zoomOut = useCallback(() => {
+    setZoom(z => Math.max(1, z / 2));
+  }, []);
+
+  const resetZoom = useCallback(() => {
+    setZoom(1);
+    setViewportCenter(50);
+  }, []);
+
+  // Global keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      switch (e.key) {
+        case ' ':
+          e.preventDefault();
+          togglePlay();
+          break;
+        case 'ArrowLeft':
+          e.preventDefault();
+          skip(-5);
+          break;
+        case 'ArrowRight':
+          e.preventDefault();
+          skip(5);
+          break;
+        case '[':
+          e.preventDefault();
+          jumpToStart();
+          break;
+        case ']':
+          e.preventDefault();
+          jumpToEnd();
+          break;
+        case '=':
+        case '+':
+          e.preventDefault();
+          zoomIn();
+          break;
+        case '-':
+          e.preventDefault();
+          zoomOut();
+          break;
+        case '0':
+          e.preventDefault();
+          resetZoom();
+          break;
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [togglePlay, skip, jumpToStart, jumpToEnd, zoomIn, zoomOut, resetZoom]);
+
   const clipDuration = trimEnd - trimStart;
-  const playheadPercent = timeToPercent(internalTime);
-  const trimStartPercent = timeToPercent(trimStart);
-  const trimEndPercent = timeToPercent(trimEnd);
+  const playheadPercent = timeToViewportPercent(internalTime);
+  const trimStartPercent = timeToViewportPercent(trimStart);
+  const trimEndPercent = timeToViewportPercent(trimEnd);
 
   return (
     <div className="bg-zinc-900 rounded-lg overflow-hidden">
@@ -279,7 +386,7 @@ function VideoPlayerInner({
               className="absolute top-1/2 -translate-y-1/2 h-2 bg-blue-500 rounded-l-full"
               style={{
                 left: `${trimStartPercent}%`,
-                width: `${Math.max(0, timeToPercent(internalTime) - trimStartPercent)}%`,
+                width: `${Math.max(0, playheadPercent - trimStartPercent)}%`,
               }}
             />
           )}
@@ -345,25 +452,39 @@ function VideoPlayerInner({
         {/* Playback Controls */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={jumpToStart} title="Jump to clip start">
+            <Button variant="ghost" size="sm" onClick={jumpToStart} title="Jump to clip start [">
               ⏮
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => skip(-5)}>
+            <Button variant="ghost" size="sm" onClick={() => skip(-5)} title="Back 5s (←)">
               -5s
             </Button>
-            <Button variant="primary" size="sm" onClick={togglePlay}>
+            <Button variant="primary" size="sm" onClick={togglePlay} title="Play/Pause (Space)">
               {isPlaying ? "Pause" : "Play"}
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => skip(5)}>
+            <Button variant="ghost" size="sm" onClick={() => skip(5)} title="Forward 5s (→)">
               +5s
             </Button>
-            <Button variant="ghost" size="sm" onClick={jumpToEnd} title="Jump to clip end">
+            <Button variant="ghost" size="sm" onClick={jumpToEnd} title="Jump to clip end ]">
               ⏭
             </Button>
           </div>
 
-          <div className="flex items-center gap-2 text-xs text-zinc-500">
-            <span>Drag <span className="text-green-400">green</span>/<span className="text-red-400">red</span> handles to trim</span>
+          {/* Zoom Controls */}
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="sm" onClick={zoomOut} disabled={zoom <= 1} title="Zoom out (-)">
+              −
+            </Button>
+            <span className="text-xs text-zinc-400 font-mono w-10 text-center">
+              {zoom}x
+            </span>
+            <Button variant="ghost" size="sm" onClick={zoomIn} disabled={zoom >= MAX_ZOOM} title="Zoom in (+)">
+              +
+            </Button>
+            {zoom > 1 && (
+              <Button variant="ghost" size="sm" onClick={resetZoom} title="Reset zoom (0)">
+                1:1
+              </Button>
+            )}
           </div>
         </div>
       </div>

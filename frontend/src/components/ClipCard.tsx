@@ -57,8 +57,13 @@ export function ClipCard({
 
       {/* Signal Badges */}
       <div className="flex flex-wrap gap-1.5 mb-3">
-        {clip.signals.map((signal, index) => (
-          <Badge key={`${signal}-${index}`} signal={signal as SignalType} />
+        {Object.entries(
+          clip.signals.reduce<Record<string, number>>((acc, signal) => {
+            acc[signal] = (acc[signal] || 0) + 1;
+            return acc;
+          }, {})
+        ).map(([signal, count]) => (
+          <Badge key={signal} signal={signal as SignalType} count={count} />
         ))}
       </div>
 
