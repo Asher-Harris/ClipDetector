@@ -20,7 +20,8 @@ ClipDetector/
 │   ├── main.py           # API entry point
 │   ├── requirements.txt
 │   └── analyzers/        # Analysis modules
-│       └── audio.py      # Audio spike detection
+│       ├── audio.py      # Audio spike detection
+│       └── chat.py       # Chat hype moment detection
 ├── frontend/             # Next.js React frontend
 │   └── src/app/          # App router pages
 ├── data/                 # Local data storage (git-ignored)
@@ -128,6 +129,47 @@ curl -X POST http://localhost:8000/api/analyze/audio \
   "config": {...}
 }
 ```
+
+### Chat Analysis
+
+Analyze a chat JSON file for hype moments (velocity spikes and emote floods):
+
+```bash
+curl -X POST http://localhost:8000/api/analyze/chat \
+  -H "Content-Type: application/json" \
+  -d '{"file_path": "chats/my_stream_chat.json"}'
+```
+
+**Parameters:**
+- `file_path` (required): Path to chat JSON file relative to `/data` folder
+
+**Response:**
+```json
+{
+  "file_path": "chats/my_stream_chat.json",
+  "moments": [
+    {
+      "timestamp": 125.5,
+      "intensity": 1.5,
+      "duration": 5.0,
+      "moment_type": "velocity_spike",
+      "details": {"messages_in_window": 45, "messages_per_second": 9.0, "baseline_per_second": 2.1}
+    },
+    {
+      "timestamp": 130.0,
+      "intensity": 1.2,
+      "duration": 5.0,
+      "moment_type": "emote_flood",
+      "details": {"messages_in_window": 28, "emote_messages": 18, "total_emotes": 24, "emote_ratio": 0.64}
+    }
+  ],
+  "total_moments": 2
+}
+```
+
+**Moment types:**
+- `velocity_spike`: Sudden increase in messages per second compared to rolling baseline
+- `emote_flood`: High concentration of emotes in a time window (50%+ of messages contain emotes)
 
 ## Development
 

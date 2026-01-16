@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -5,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from analyzers.audio import analyze_audio, AnalysisConfig, AudioSpike
+from analyzers.chat import analyze_chat, ChatMoment
 
 app = FastAPI(title="ClipDetector API", version="0.1.0")
 
@@ -47,6 +49,24 @@ class AudioAnalysisResponse(BaseModel):
     spikes: list[SpikeResult]
     total_spikes: int
     config: dict
+
+
+class ChatAnalysisRequest(BaseModel):
+    file_path: str = Field(..., description="Path to chat JSON file relative to /data folder")
+
+
+class MomentResult(BaseModel):
+    timestamp: float
+    intensity: float
+    duration: float
+    moment_type: str
+    details: dict
+
+
+class ChatAnalysisResponse(BaseModel):
+    file_path: str
+    moments: list[MomentResult]
+    total_moments: int
 
 
 @app.get("/health")
@@ -107,4 +127,52 @@ async def analyze_audio_endpoint(request: AudioAnalysisRequest):
             "chunk_ms": config.chunk_ms,
             "min_spike_gap": config.min_spike_gap,
         }
+    )
+
+
+@app.post("/api/analyze/chat", response_model=ChatAnalysisResponse)
+async def analyze_chat_endpoint(request: ChatAnalysisRequest):
+    """Analyze a chat JSON file for hype moments.
+
+    The file_path should be relative to the /data folder.
+    Example: "chats/my_stream_chat.json"
+    """
+    # Resolve the full path
+    chat_path = DATA_DIR / request.file_path
+
+    # Security check: ensure the path is within data directory
+    try:
+        chat_path = chat_path.resolve()
+        data_dir_resolved = DATA_DIR.resolve()
+        if not str(chat_path).startswith(str(data_dir_resolved)):
+            raise HTTPException(status_code=400, detail="Invalid file path")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid file path")
+
+    if not chat_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"File not found: {request.file_path}"
+        )
+
+    try:
+        moments = analyze_chat(chat_path)
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON file: {e}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    return ChatAnalysisResponse(
+        file_path=request.file_path,
+        moments=[
+            MomentResult(
+                timestamp=m.timestamp,
+                intensity=m.intensity,
+                duration=m.duration,
+                moment_type=m.moment_type,
+                details=m.details,
+            )
+            for m in moments
+        ],
+        total_moments=len(moments),
     )
