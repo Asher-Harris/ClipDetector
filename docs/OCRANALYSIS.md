@@ -320,6 +320,66 @@ Recommend Option 1 for now; webcam rarely has text that matches game event keywo
 4. **Modify**: `backend/analyzers/fusion.py` - Incorporate OCR signals
 5. **Modify**: `backend/requirements.txt` - Add `easyocr` (and `opencv-python` if not present)
 
+## TwitchDownloader Integration Notes
+
+The VODs and chat are downloaded using [TwitchDownloader](https://github.com/lay295/TwitchDownloader). The chat JSON includes valuable metadata:
+
+### Auto-Detecting Game from Chapters
+
+The chat JSON includes `video.chapters` with game change timestamps:
+
+```json
+{
+  "video": {
+    "chapters": [
+      {
+        "startMilliseconds": 0,
+        "lengthMilliseconds": 7741000,
+        "gameDisplayName": "Yeah! You Want \"Those Games\", Right?...",
+        "gameId": "796855109"
+      },
+      {
+        "startMilliseconds": 7741000,
+        "lengthMilliseconds": 847000,
+        "gameDisplayName": "MAD WAY",
+        "gameId": "27264154"
+      }
+    ]
+  }
+}
+```
+
+**This enables automatic game preset selection!** The OCR analyzer could:
+
+1. Accept the chat JSON path as an optional parameter
+2. Parse the chapters to know what game is playing at each timestamp
+3. Automatically switch OCR keyword presets based on the current game
+4. Map common game names to presets (e.g., "Elden Ring" → souls-like preset)
+
+### Suggested API Enhancement
+
+```json
+{
+  "file_path": "vods/my_stream.mp4",
+  "chat_path": "chats/my_stream_chat.json",  // Optional: enables auto game detection
+  "sample_interval": 1.0
+}
+```
+
+If `chat_path` is provided, the analyzer reads chapters and automatically applies the appropriate game preset for each timestamp range. If not provided, falls back to the "general" preset.
+
+### Chat Render for Clip Export
+
+TwitchDownloaderCLI can render chat overlays for exported clips:
+
+```bash
+# Render chat for a specific time range
+TwitchDownloaderCLI chatrender -i chat.json -h 1080 -w 422 --framerate 30 \
+  -b 95.5 -e 155.5 -o clip_chat.mp4
+```
+
+This could be integrated into the clip export pipeline to add chat replay to clips, making them more engaging for social media.
+
 ## Testing
 
 1. Test frame extraction at various intervals
@@ -335,3 +395,18 @@ Recommend Option 1 for now; webcam rarely has text that matches game event keywo
 - Valorant round win/loss
 - Any game with a kill feed
 - Speedrun timer with "NEW BEST" or "PB"
+
+## Note: Chat Emotes Are Already Available
+
+For context, the existing chat analyzer already has access to BTTV/FFZ/7TV emotes. In the TwitchDownloader JSON format, these third-party emotes appear as plain text in `message.body`:
+
+```json
+{
+  "message": {
+    "body": "POGCRAZY peepoPls DinoDance",
+    ...
+  }
+}
+```
+
+So emote-based hype detection is already covered by the chat analyzer. The OCR analyzer specifically targets **on-screen game UI text** that chat/audio can't detect.
