@@ -1,0 +1,21 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+.env
+
+# Node
+node_modules/
+.next/
+
+# Data files (keep structure, ignore contents)
+data/vods/*
+data/chats/*
+!data/vods/.gitkeep
+!data/chats/.gitkeep
+
+# OS
+.DS_Store
+
+# Claude
+.claude/

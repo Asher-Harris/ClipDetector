@@ -16,14 +16,16 @@ When a clip-worthy moment is detected, the system grabs 30 seconds before and af
 
 ```
 ClipDetector/
-├── backend/          # Python FastAPI backend
-│   ├── main.py       # API entry point
-│   └── requirements.txt
-├── frontend/         # Next.js React frontend
-│   └── src/app/      # App router pages
-├── data/             # Local data storage (git-ignored)
-│   ├── vods/         # Place VOD video files here
-│   └── chats/        # Place chat JSON files here
+├── backend/              # Python FastAPI backend
+│   ├── main.py           # API entry point
+│   ├── requirements.txt
+│   └── analyzers/        # Analysis modules
+│       └── audio.py      # Audio spike detection
+├── frontend/             # Next.js React frontend
+│   └── src/app/          # App router pages
+├── data/                 # Local data storage (git-ignored)
+│   ├── vods/             # Place VOD video files here
+│   └── chats/            # Place chat JSON files here
 └── README.md
 ```
 
@@ -83,7 +85,49 @@ The UI will be available at http://localhost:3000
 
 ## API Endpoints
 
-- `GET /health` - Health check endpoint
+### Health Check
+
+```bash
+curl http://localhost:8000/health
+```
+
+### Audio Analysis
+
+Analyze a video file for loudness spikes:
+
+```bash
+# Basic usage (uses default thresholds)
+curl -X POST http://localhost:8000/api/analyze/audio \
+  -H "Content-Type: application/json" \
+  -d '{"file_path": "vods/my_stream.mp4"}'
+
+# With custom threshold (lower = more sensitive)
+curl -X POST http://localhost:8000/api/analyze/audio \
+  -H "Content-Type: application/json" \
+  -d '{
+    "file_path": "vods/my_stream.mp4",
+    "threshold_multiplier": 2.0,
+    "window_seconds": 10.0
+  }'
+```
+
+**Parameters:**
+- `file_path` (required): Path to video relative to `/data` folder
+- `threshold_multiplier` (default: 2.5): Spike detected when loudness exceeds average by this factor
+- `window_seconds` (default: 10.0): Rolling window for computing average loudness
+
+**Response:**
+```json
+{
+  "file_path": "vods/my_stream.mp4",
+  "spikes": [
+    {"timestamp": 125.3, "intensity": 1.8, "duration": 0.5},
+    {"timestamp": 342.1, "intensity": 2.1, "duration": 0.3}
+  ],
+  "total_spikes": 2,
+  "config": {...}
+}
+```
 
 ## Development
 
