@@ -42,6 +42,9 @@ class ProfileConfig(BaseModel):
     chat_weight: float = Field(default=1.5, ge=0.0, le=5.0)
     audio_threshold_multiplier: float = Field(default=2.5, ge=1.0, le=10.0)
     chat_threshold: float = Field(default=3.0, ge=1.0, le=10.0)
+    audio_intensity_cap: float = Field(default=2.5, ge=1.0, le=10.0)
+    synergy_bonus: float = Field(default=0.75, ge=0.0, le=2.0)
+    min_score: float = Field(default=3.0, ge=0.0, le=50.0)
 
 
 class ProfileCreateRequest(BaseModel):
@@ -50,6 +53,9 @@ class ProfileCreateRequest(BaseModel):
     chat_weight: float = Field(default=1.5, ge=0.0, le=5.0)
     audio_threshold_multiplier: float = Field(default=2.5, ge=1.0, le=10.0)
     chat_threshold: float = Field(default=3.0, ge=1.0, le=10.0)
+    audio_intensity_cap: float = Field(default=2.5, ge=1.0, le=10.0)
+    synergy_bonus: float = Field(default=0.75, ge=0.0, le=2.0)
+    min_score: float = Field(default=3.0, ge=0.0, le=50.0)
 
 
 class ProfileUpdateRequest(BaseModel):
@@ -58,6 +64,9 @@ class ProfileUpdateRequest(BaseModel):
     chat_weight: float | None = Field(default=None, ge=0.0, le=5.0)
     audio_threshold_multiplier: float | None = Field(default=None, ge=1.0, le=10.0)
     chat_threshold: float | None = Field(default=None, ge=1.0, le=10.0)
+    audio_intensity_cap: float | None = Field(default=None, ge=1.0, le=10.0)
+    synergy_bonus: float | None = Field(default=None, ge=0.0, le=2.0)
+    min_score: float | None = Field(default=None, ge=0.0, le=50.0)
 
 
 def slugify(name: str) -> str:
@@ -273,6 +282,9 @@ async def create_profile(request: ProfileCreateRequest):
         chat_weight=request.chat_weight,
         audio_threshold_multiplier=request.audio_threshold_multiplier,
         chat_threshold=request.chat_threshold,
+        audio_intensity_cap=request.audio_intensity_cap,
+        synergy_bonus=request.synergy_bonus,
+        min_score=request.min_score,
     )
 
     profile_path = PROFILES_DIR / f"{profile_id}.json"
@@ -472,6 +484,9 @@ class FullAnalysisRequest(BaseModel):
     chat_weight: float | None = Field(default=None, ge=0.0, le=5.0)
     audio_threshold_multiplier: float | None = Field(default=None, ge=1.0, le=10.0)
     chat_threshold: float | None = Field(default=None, ge=1.0, le=10.0)
+    audio_intensity_cap: float | None = Field(default=None, ge=1.0, le=10.0)
+    synergy_bonus: float | None = Field(default=None, ge=0.0, le=2.0)
+    min_score: float | None = Field(default=None, ge=0.0, le=50.0)
 
 
 class ClipCandidateResult(BaseModel):
@@ -550,6 +565,9 @@ async def analyze_full_endpoint(request: FullAnalysisRequest):
         clip_buffer=request.clip_buffer,
         audio_weight=request.audio_weight or 1.0,
         chat_weight=request.chat_weight or 1.5,
+        audio_intensity_cap=request.audio_intensity_cap or 2.5,
+        synergy_bonus=request.synergy_bonus or 0.75,
+        min_score=request.min_score or 3.0,
     )
 
     try:
@@ -589,6 +607,9 @@ async def analyze_full_endpoint(request: FullAnalysisRequest):
             "chat_weight": fusion_config.chat_weight,
             "audio_threshold_multiplier": audio_config.threshold_multiplier,
             "chat_threshold": chat_config.threshold,
+            "audio_intensity_cap": fusion_config.audio_intensity_cap,
+            "synergy_bonus": fusion_config.synergy_bonus,
+            "min_score": fusion_config.min_score,
         }
     )
 

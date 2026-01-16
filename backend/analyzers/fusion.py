@@ -31,6 +31,9 @@ class FusionConfig:
     dedup_window: float = 30.0       # merge candidates within this many seconds
     audio_weight: float = 1.0
     chat_weight: float = 1.5         # chat activity is a strong signal
+    audio_intensity_cap: float = 2.5 # max audio intensity to prevent runaway scores
+    synergy_bonus: float = 0.75      # bonus multiplier per additional signal type
+    min_score: float = 3.0           # minimum score to include a candidate
 
 
 def normalize_signals(
@@ -44,7 +47,7 @@ def normalize_signals(
     for spike in audio_spikes:
         signals.append(Signal(
             timestamp=spike.timestamp,
-            intensity=spike.intensity,
+            intensity=min(spike.intensity, config.audio_intensity_cap),
             signal_type="audio",
             weight=config.audio_weight,
         ))
@@ -86,7 +89,7 @@ def cluster_signals(signals: list[Signal], window: float) -> list[list[Signal]]:
     return clusters
 
 
-def score_cluster(signals: list[Signal]) -> tuple[float, float, list[str]]:
+def score_cluster(signals: list[Signal], config: FusionConfig) -> tuple[float, float, list[str]]:
     """Calculate the combined score for a cluster of signals.
 
     Returns:
@@ -103,9 +106,8 @@ def score_cluster(signals: list[Signal]) -> tuple[float, float, list[str]]:
     # Bonus for multiple different signal types (synergy)
     unique_types = set(s.signal_type for s in signals)
     if len(unique_types) > 1:
-        # 20% bonus per additional signal type
-        synergy_bonus = 1.0 + (len(unique_types) - 1) * 0.2
-        total_score *= synergy_bonus
+        synergy_multiplier = 1.0 + (len(unique_types) - 1) * config.synergy_bonus
+        total_score *= synergy_multiplier
 
     # Timestamp: weighted average by intensity
     total_intensity = sum(s.intensity for s in signals)
@@ -177,7 +179,7 @@ def fuse_signals(
     # Score each cluster and create candidates
     candidates = []
     for cluster in clusters:
-        score, timestamp, signal_types = score_cluster(cluster)
+        score, timestamp, signal_types = score_cluster(cluster, config)
 
         # Calculate clip boundaries
         clip_start = max(0, timestamp - config.clip_buffer)
@@ -193,6 +195,9 @@ def fuse_signals(
 
     # Deduplicate nearby candidates
     candidates = deduplicate_candidates(candidates, config.dedup_window)
+
+    # Filter by minimum score
+    candidates = [c for c in candidates if c.score >= config.min_score]
 
     # Sort by score descending for final output
     candidates.sort(key=lambda c: c.score, reverse=True)
