@@ -1,4 +1,12 @@
-import type { FileListResponse, FullAnalysisResponse, ClipExportRequest, ClipExportResponse } from "./types";
+import type {
+  FileListResponse,
+  FullAnalysisResponse,
+  ClipExportRequest,
+  ClipExportResponse,
+  Profile,
+  ProfileCreateRequest,
+  ProfileUpdateRequest,
+} from "./types";
 
 const API_BASE = "http://localhost:8000";
 
@@ -45,6 +53,10 @@ export type FullAnalysisRequest = {
   chat_path: string;
   overlap_window?: number;
   clip_buffer?: number;
+  audio_weight?: number;
+  chat_weight?: number;
+  audio_threshold_multiplier?: number;
+  chat_threshold?: number;
 };
 
 export async function runFullAnalysis(
@@ -74,4 +86,38 @@ export async function exportClip(
 // Get URL for exported clip
 export function getClipUrl(clipPath: string): string {
   return `${API_BASE}/data/${clipPath}`;
+}
+
+// Profile API
+export async function listProfiles(): Promise<Profile[]> {
+  return apiRequest("/api/profiles");
+}
+
+export async function getProfile(id: string): Promise<Profile> {
+  return apiRequest(`/api/profiles/${id}`);
+}
+
+export async function createProfile(
+  data: ProfileCreateRequest
+): Promise<Profile> {
+  return apiRequest("/api/profiles", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateProfile(
+  id: string,
+  data: ProfileUpdateRequest
+): Promise<Profile> {
+  return apiRequest(`/api/profiles/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteProfile(id: string): Promise<void> {
+  return apiRequest(`/api/profiles/${id}`, {
+    method: "DELETE",
+  });
 }

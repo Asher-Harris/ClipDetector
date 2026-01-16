@@ -46,18 +46,16 @@ export type ClipStatusMap = {
 };
 
 // Signal type for badge rendering
-export type SignalType = "audio" | "velocity_spike" | "emote_flood";
+export type SignalType = "audio" | "chat";
 
 export const SIGNAL_LABELS: Record<SignalType, string> = {
   audio: "Audio",
-  velocity_spike: "Chat",
-  emote_flood: "Emotes",
+  chat: "Chat",
 };
 
 export const SIGNAL_COLORS: Record<SignalType, string> = {
   audio: "bg-blue-500",
-  velocity_spike: "bg-purple-500",
-  emote_flood: "bg-yellow-500",
+  chat: "bg-purple-500",
 };
 
 // Generate deterministic clip ID
@@ -85,4 +83,82 @@ export type ExportResult = {
   status: "success" | "error";
   outputPath?: string;
   error?: string;
+};
+
+// Profile Types
+export type Profile = {
+  id: string;
+  name: string;
+  is_default: boolean;
+  created_at: string;
+  updated_at: string;
+  audio_weight: number;
+  chat_weight: number;
+  audio_threshold_multiplier: number;
+  chat_threshold: number;
+};
+
+export type ProfileCreateRequest = {
+  name: string;
+  audio_weight: number;
+  chat_weight: number;
+  audio_threshold_multiplier: number;
+  chat_threshold: number;
+};
+
+export type ProfileUpdateRequest = Partial<ProfileCreateRequest>;
+
+export const DEFAULT_PROFILE_VALUES: ProfileCreateRequest = {
+  name: "",
+  audio_weight: 1.0,
+  chat_weight: 1.5,
+  audio_threshold_multiplier: 2.5,
+  chat_threshold: 3.0,
+};
+
+export type ProfileParamMeta = {
+  label: string;
+  description: string;
+  min: number;
+  max: number;
+  step: number;
+  category: "weights" | "thresholds";
+};
+
+export const PROFILE_PARAMS: Record<
+  keyof Omit<ProfileCreateRequest, "name">,
+  ProfileParamMeta
+> = {
+  audio_weight: {
+    label: "Audio Weight",
+    description: "Weight for audio spike signals",
+    min: 0,
+    max: 5,
+    step: 0.1,
+    category: "weights",
+  },
+  chat_weight: {
+    label: "Chat Weight",
+    description: "Weight for chat activity signals",
+    min: 0,
+    max: 5,
+    step: 0.1,
+    category: "weights",
+  },
+  audio_threshold_multiplier: {
+    label: "Audio Threshold",
+    description: "Loudness must exceed average by this factor",
+    min: 1,
+    max: 10,
+    step: 0.1,
+    category: "thresholds",
+  },
+  chat_threshold: {
+    label: "Chat Threshold",
+    description: "Chat rate must exceed baseline by this factor",
+    min: 1,
+    max: 10,
+    step: 0.1,
+    category: "thresholds",
+  },
 };

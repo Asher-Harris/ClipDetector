@@ -87,7 +87,6 @@ Ideas and planned features for expanding ClipDetector's capabilities.
 | Drag-and-drop | Drop VOD files directly into the app |
 | Bulk actions | Approve/reject multiple clips at once |
 | Confidence threshold slider | Adjust minimum score for clip candidates in UI |
-| Signal weight tuning | Customize audio/chat/emote weights in UI |
 | Undo/redo | Revert trim adjustments and status changes |
 
 ### Dashboard & Analytics

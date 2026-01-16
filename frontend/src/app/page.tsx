@@ -4,9 +4,20 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Card, Spinner } from "@/components/ui";
 import { FileSelector } from "@/components/FileSelector";
-import { listFiles, runFullAnalysis, checkHealth } from "@/lib/api";
+import { ProfileSelector } from "@/components/ProfileSelector";
+import { ProfileEditor } from "@/components/ProfileEditor";
+import {
+  listFiles,
+  runFullAnalysis,
+  checkHealth,
+  listProfiles,
+  createProfile,
+  updateProfile,
+  deleteProfile,
+} from "@/lib/api";
 import { useToast } from "@/context/ToastContext";
 import { useApp } from "@/context/AppContext";
+import type { Profile, ProfileCreateRequest } from "@/lib/types";
 
 export default function Home() {
   const router = useRouter();
@@ -20,16 +31,25 @@ export default function Home() {
   const [selectedChat, setSelectedChat] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [selectedProfileId, setSelectedProfileId] = useState("default");
+  const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const [editingProfile, setEditingProfile] = useState<Profile | null>(null);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
 
-  // Check health and load files on mount
+  // Check health and load files/profiles on mount
   useEffect(() => {
     async function init() {
       try {
         await checkHealth();
         setIsHealthy(true);
-        const files = await listFiles();
+        const [files, profileList] = await Promise.all([
+          listFiles(),
+          listProfiles(),
+        ]);
         setVodFiles(files.vods);
         setChatFiles(files.chats);
+        setProfiles(profileList);
       } catch (error) {
         setIsHealthy(false);
         addToast("error", "Failed to connect to backend");
@@ -43,11 +63,17 @@ export default function Home() {
   const handleAnalyze = async () => {
     if (!selectedVod || !selectedChat) return;
 
+    const profile = profiles.find((p) => p.id === selectedProfileId);
+
     setIsAnalyzing(true);
     try {
       const result = await runFullAnalysis({
         video_path: `vods/${selectedVod}`,
         chat_path: `chats/${selectedChat}`,
+        audio_weight: profile?.audio_weight,
+        chat_weight: profile?.chat_weight,
+        audio_threshold_multiplier: profile?.audio_threshold_multiplier,
+        chat_threshold: profile?.chat_threshold,
       });
 
       setAnalysisResult({
@@ -64,6 +90,53 @@ export default function Home() {
       addToast("error", message);
     } finally {
       setIsAnalyzing(false);
+    }
+  };
+
+  const handleEditProfile = (profile: Profile) => {
+    setEditingProfile(profile);
+    setIsEditorOpen(true);
+  };
+
+  const handleCreateProfile = () => {
+    setEditingProfile(null);
+    setIsEditorOpen(true);
+  };
+
+  const handleDeleteProfile = async (profile: Profile) => {
+    if (profile.is_default) return;
+    try {
+      await deleteProfile(profile.id);
+      setProfiles((prev) => prev.filter((p) => p.id !== profile.id));
+      if (selectedProfileId === profile.id) {
+        setSelectedProfileId("default");
+      }
+      addToast("success", "Profile deleted");
+    } catch {
+      addToast("error", "Failed to delete profile");
+    }
+  };
+
+  const handleSaveProfile = async (data: ProfileCreateRequest) => {
+    setIsSavingProfile(true);
+    try {
+      if (editingProfile) {
+        const updated = await updateProfile(editingProfile.id, data);
+        setProfiles((prev) =>
+          prev.map((p) => (p.id === updated.id ? updated : p))
+        );
+        addToast("success", "Profile updated");
+      } else {
+        const created = await createProfile(data);
+        setProfiles((prev) => [...prev, created]);
+        setSelectedProfileId(created.id);
+        addToast("success", "Profile created");
+      }
+      setIsEditorOpen(false);
+    } catch {
+      addToast("error", "Failed to save profile");
+    } finally {
+      setIsSavingProfile(false);
     }
   };
 
@@ -119,6 +192,26 @@ export default function Home() {
           )}
         </Card>
 
+        {/* Profile Selection */}
+        <Card className="p-6 mb-6">
+          <h2 className="text-lg font-semibold mb-4">Analysis Profile</h2>
+          {isLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Spinner size="lg" />
+            </div>
+          ) : (
+            <ProfileSelector
+              profiles={profiles}
+              selectedProfileId={selectedProfileId}
+              onSelect={setSelectedProfileId}
+              onEdit={handleEditProfile}
+              onCreate={handleCreateProfile}
+              onDelete={handleDeleteProfile}
+              disabled={isAnalyzing}
+            />
+          )}
+        </Card>
+
         {/* Analyze Button */}
         <div className="flex items-center gap-4">
           <Button
@@ -161,6 +254,14 @@ export default function Home() {
           </Card>
         )}
       </main>
+
+      <ProfileEditor
+        profile={editingProfile}
+        isOpen={isEditorOpen}
+        onClose={() => setIsEditorOpen(false)}
+        onSave={handleSaveProfile}
+        isSaving={isSavingProfile}
+      />
     </div>
   );
 }

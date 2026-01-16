@@ -1,6 +1,8 @@
 import json
 import os
+import re
 import subprocess
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
@@ -9,8 +11,8 @@ from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from analyzers.audio import analyze_audio, AnalysisConfig, AudioSpike
-from analyzers.chat import analyze_chat, ChatMoment
+from analyzers.audio import analyze_audio, AnalysisConfig as AudioConfig, AudioSpike
+from analyzers.chat import analyze_chat, ChatConfig, ChatMoment
 from analyzers.fusion import analyze_full, FusionConfig, ClipCandidate
 
 app = FastAPI(title="ClipDetector API", version="0.1.0")
@@ -25,6 +27,60 @@ app.add_middleware(
 
 # Base path for data files
 DATA_DIR = Path(__file__).parent.parent / "data"
+PROFILES_DIR = DATA_DIR / "profiles"
+
+
+# ============ Profile Models ============
+
+class ProfileConfig(BaseModel):
+    id: str = Field(..., pattern=r"^[a-z0-9-]+$", min_length=1, max_length=50)
+    name: str = Field(..., min_length=1, max_length=100)
+    is_default: bool = False
+    created_at: str
+    updated_at: str
+    audio_weight: float = Field(default=1.0, ge=0.0, le=5.0)
+    chat_weight: float = Field(default=1.5, ge=0.0, le=5.0)
+    audio_threshold_multiplier: float = Field(default=2.5, ge=1.0, le=10.0)
+    chat_threshold: float = Field(default=3.0, ge=1.0, le=10.0)
+
+
+class ProfileCreateRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    audio_weight: float = Field(default=1.0, ge=0.0, le=5.0)
+    chat_weight: float = Field(default=1.5, ge=0.0, le=5.0)
+    audio_threshold_multiplier: float = Field(default=2.5, ge=1.0, le=10.0)
+    chat_threshold: float = Field(default=3.0, ge=1.0, le=10.0)
+
+
+class ProfileUpdateRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    audio_weight: float | None = Field(default=None, ge=0.0, le=5.0)
+    chat_weight: float | None = Field(default=None, ge=0.0, le=5.0)
+    audio_threshold_multiplier: float | None = Field(default=None, ge=1.0, le=10.0)
+    chat_threshold: float | None = Field(default=None, ge=1.0, le=10.0)
+
+
+def slugify(name: str) -> str:
+    slug = name.lower().strip()
+    slug = re.sub(r"[^a-z0-9\s-]", "", slug)
+    slug = re.sub(r"[\s_]+", "-", slug)
+    slug = re.sub(r"-+", "-", slug)
+    return slug[:50].strip("-")
+
+
+def ensure_profiles_dir() -> None:
+    PROFILES_DIR.mkdir(parents=True, exist_ok=True)
+    default_path = PROFILES_DIR / "default.json"
+    if not default_path.exists():
+        now = datetime.utcnow().isoformat()
+        default_profile = ProfileConfig(
+            id="default",
+            name="Default",
+            is_default=True,
+            created_at=now,
+            updated_at=now,
+        )
+        default_path.write_text(default_profile.model_dump_json(indent=2))
 
 
 def get_content_type(file_path: Path) -> str:
@@ -169,6 +225,96 @@ class ChatAnalysisResponse(BaseModel):
 @app.get("/health")
 async def health_check():
     return {"status": "healthy", "service": "clipdetector-api"}
+
+
+# ============ Profile Endpoints ============
+
+@app.get("/api/profiles", response_model=list[ProfileConfig])
+async def list_profiles():
+    ensure_profiles_dir()
+    profiles = []
+    for file in PROFILES_DIR.glob("*.json"):
+        with open(file) as f:
+            profiles.append(ProfileConfig(**json.load(f)))
+    return sorted(profiles, key=lambda p: (not p.is_default, p.name))
+
+
+@app.get("/api/profiles/{profile_id}", response_model=ProfileConfig)
+async def get_profile(profile_id: str):
+    ensure_profiles_dir()
+    profile_path = PROFILES_DIR / f"{profile_id}.json"
+    if not profile_path.exists():
+        raise HTTPException(status_code=404, detail="Profile not found")
+    with open(profile_path) as f:
+        return ProfileConfig(**json.load(f))
+
+
+@app.post("/api/profiles", response_model=ProfileConfig)
+async def create_profile(request: ProfileCreateRequest):
+    ensure_profiles_dir()
+    profile_id = slugify(request.name)
+    if not profile_id:
+        profile_id = "profile"
+
+    base_id = profile_id
+    counter = 1
+    while (PROFILES_DIR / f"{profile_id}.json").exists():
+        profile_id = f"{base_id}-{counter}"
+        counter += 1
+
+    now = datetime.utcnow().isoformat()
+    profile = ProfileConfig(
+        id=profile_id,
+        name=request.name,
+        is_default=False,
+        created_at=now,
+        updated_at=now,
+        audio_weight=request.audio_weight,
+        chat_weight=request.chat_weight,
+        audio_threshold_multiplier=request.audio_threshold_multiplier,
+        chat_threshold=request.chat_threshold,
+    )
+
+    profile_path = PROFILES_DIR / f"{profile_id}.json"
+    profile_path.write_text(profile.model_dump_json(indent=2))
+    return profile
+
+
+@app.put("/api/profiles/{profile_id}", response_model=ProfileConfig)
+async def update_profile(profile_id: str, request: ProfileUpdateRequest):
+    ensure_profiles_dir()
+    profile_path = PROFILES_DIR / f"{profile_id}.json"
+    if not profile_path.exists():
+        raise HTTPException(status_code=404, detail="Profile not found")
+
+    with open(profile_path) as f:
+        existing = ProfileConfig(**json.load(f))
+
+    update_data = request.model_dump(exclude_none=True)
+    updated_dict = existing.model_dump()
+    updated_dict.update(update_data)
+    updated_dict["updated_at"] = datetime.utcnow().isoformat()
+    updated = ProfileConfig(**updated_dict)
+
+    profile_path.write_text(updated.model_dump_json(indent=2))
+    return updated
+
+
+@app.delete("/api/profiles/{profile_id}")
+async def delete_profile(profile_id: str):
+    ensure_profiles_dir()
+    profile_path = PROFILES_DIR / f"{profile_id}.json"
+    if not profile_path.exists():
+        raise HTTPException(status_code=404, detail="Profile not found")
+
+    with open(profile_path) as f:
+        profile = ProfileConfig(**json.load(f))
+
+    if profile.is_default:
+        raise HTTPException(status_code=400, detail="Cannot delete default profile")
+
+    profile_path.unlink()
+    return {"message": "Profile deleted"}
 
 
 class FileListResponse(BaseModel):
@@ -322,6 +468,10 @@ class FullAnalysisRequest(BaseModel):
         le=120.0,
         description="Seconds before and after the moment to include in clip"
     )
+    audio_weight: float | None = Field(default=None, ge=0.0, le=5.0)
+    chat_weight: float | None = Field(default=None, ge=0.0, le=5.0)
+    audio_threshold_multiplier: float | None = Field(default=None, ge=1.0, le=10.0)
+    chat_threshold: float | None = Field(default=None, ge=1.0, le=10.0)
 
 
 class ClipCandidateResult(BaseModel):
@@ -386,14 +536,30 @@ async def analyze_full_endpoint(request: FullAnalysisRequest):
             detail=f"Chat file not found: {request.chat_path}"
         )
 
-    # Build fusion config from request
+    # Build configs from request (use defaults if not provided)
+    audio_config = AudioConfig(
+        threshold_multiplier=request.audio_threshold_multiplier or 2.5,
+    )
+
+    chat_config = ChatConfig(
+        threshold=request.chat_threshold or 3.0,
+    )
+
     fusion_config = FusionConfig(
         overlap_window=request.overlap_window,
         clip_buffer=request.clip_buffer,
+        audio_weight=request.audio_weight or 1.0,
+        chat_weight=request.chat_weight or 1.5,
     )
 
     try:
-        candidates = analyze_full(video_path, chat_path, fusion_config=fusion_config)
+        candidates = analyze_full(
+            video_path,
+            chat_path,
+            audio_config=audio_config,
+            chat_config=chat_config,
+            fusion_config=fusion_config,
+        )
     except json.JSONDecodeError as e:
         raise HTTPException(status_code=400, detail=f"Invalid chat JSON file: {e}")
     except RuntimeError as e:
@@ -420,8 +586,9 @@ async def analyze_full_endpoint(request: FullAnalysisRequest):
             "clip_buffer": fusion_config.clip_buffer,
             "dedup_window": fusion_config.dedup_window,
             "audio_weight": fusion_config.audio_weight,
-            "velocity_weight": fusion_config.velocity_weight,
-            "emote_weight": fusion_config.emote_weight,
+            "chat_weight": fusion_config.chat_weight,
+            "audio_threshold_multiplier": audio_config.threshold_multiplier,
+            "chat_threshold": chat_config.threshold,
         }
     )
 

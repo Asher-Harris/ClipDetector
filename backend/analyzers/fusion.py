@@ -10,7 +10,7 @@ class Signal:
     """A normalized signal from any analyzer."""
     timestamp: float
     intensity: float
-    signal_type: str  # "audio", "velocity_spike", "emote_flood"
+    signal_type: str  # "audio" or "chat"
     weight: float     # base weight for this signal type
 
 
@@ -30,8 +30,7 @@ class FusionConfig:
     clip_buffer: float = 30.0        # seconds before and after the moment
     dedup_window: float = 30.0       # merge candidates within this many seconds
     audio_weight: float = 1.0
-    velocity_weight: float = 1.5     # chat velocity is a strong signal
-    emote_weight: float = 1.0
+    chat_weight: float = 1.5         # chat activity is a strong signal
 
 
 def normalize_signals(
@@ -51,16 +50,11 @@ def normalize_signals(
         ))
 
     for moment in chat_moments:
-        if moment.moment_type == "velocity_spike":
-            weight = config.velocity_weight
-        else:
-            weight = config.emote_weight
-
         signals.append(Signal(
             timestamp=moment.timestamp,
             intensity=moment.intensity,
-            signal_type=moment.moment_type,
-            weight=weight,
+            signal_type="chat",
+            weight=config.chat_weight,
         ))
 
     # Sort by timestamp

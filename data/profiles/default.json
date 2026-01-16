@@ -1,0 +1,11 @@
+{
+  "id": "default",
+  "name": "Default",
+  "is_default": true,
+  "created_at": "2026-01-16T20:13:13.843351",
+  "updated_at": "2026-01-16T20:13:13.843351",
+  "audio_weight": 1.0,
+  "chat_weight": 1.5,
+  "audio_threshold_multiplier": 2.5,
+  "chat_threshold": 3.0
+}
