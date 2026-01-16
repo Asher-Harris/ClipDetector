@@ -1,3 +1,4 @@
+import bisect
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -78,11 +79,14 @@ def extract_message_data(comments: list[dict]) -> list[dict]:
 
 def get_messages_in_window(
     messages: list[dict],
+    timestamps: list[float],
     start_time: float,
     end_time: float
 ) -> list[dict]:
-    """Get all messages within a time window."""
-    return [m for m in messages if start_time <= m["timestamp"] < end_time]
+    """Get all messages within a time window using binary search."""
+    start_idx = bisect.bisect_left(timestamps, start_time)
+    end_idx = bisect.bisect_left(timestamps, end_time)
+    return messages[start_idx:end_idx]
 
 
 def detect_chat_spikes(
@@ -93,27 +97,24 @@ def detect_chat_spikes(
     if not messages:
         return []
 
-    moments = []
-    start_time = messages[0]["timestamp"]
-    end_time = messages[-1]["timestamp"]
+    timestamps = [m["timestamp"] for m in messages]
 
-    # Slide through the VOD in window-sized steps
+    moments = []
+    start_time = timestamps[0]
+    end_time = timestamps[-1]
+
     current_time = start_time + config.baseline_seconds
 
     while current_time < end_time:
-        # Get baseline: messages in the period before current window
         baseline_start = current_time - config.baseline_seconds
-        baseline_msgs = get_messages_in_window(messages, baseline_start, current_time)
+        baseline_msgs = get_messages_in_window(messages, timestamps, baseline_start, current_time)
 
-        # Get current window
         window_end = current_time + config.window_seconds
-        window_msgs = get_messages_in_window(messages, current_time, window_end)
+        window_msgs = get_messages_in_window(messages, timestamps, current_time, window_end)
 
-        # Calculate velocities (messages per second)
         baseline_velocity = len(baseline_msgs) / config.baseline_seconds
         window_velocity = len(window_msgs) / config.window_seconds
 
-        # Check for spike
         if (len(baseline_msgs) >= config.min_messages_for_baseline and
             baseline_velocity > 0 and
             window_velocity >= baseline_velocity * config.threshold):
@@ -132,7 +133,6 @@ def detect_chat_spikes(
                 }
             ))
 
-        # Advance by half window for overlap
         current_time += config.window_seconds / 2
 
     return moments

@@ -1,6 +1,4 @@
 import subprocess
-import tempfile
-import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -24,21 +22,25 @@ class AnalysisConfig:
     sample_rate: int = 22050           # downsample for efficiency
 
 
-def extract_audio(video_path: Path, output_path: Path, sample_rate: int = 22050) -> None:
-    """Extract audio from video file to WAV using FFmpeg."""
+def extract_audio_to_numpy(video_path: Path, sample_rate: int = 22050) -> np.ndarray:
+    """Extract audio from video directly to numpy array via FFmpeg pipe."""
     cmd = [
         "ffmpeg",
         "-i", str(video_path),
-        "-vn",                    # no video
-        "-acodec", "pcm_s16le",   # PCM 16-bit
-        "-ar", str(sample_rate),  # sample rate
-        "-ac", "1",               # mono
-        "-y",                     # overwrite
-        str(output_path)
+        "-vn",
+        "-acodec", "pcm_s16le",
+        "-ar", str(sample_rate),
+        "-ac", "1",
+        "-f", "s16le",
+        "-loglevel", "error",
+        "pipe:1"
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(cmd, capture_output=True)
     if result.returncode != 0:
-        raise RuntimeError(f"FFmpeg failed: {result.stderr}")
+        raise RuntimeError(f"FFmpeg failed: {result.stderr.decode()}")
+
+    audio = np.frombuffer(result.stdout, dtype=np.int16).astype(np.float32) / 32768.0
+    return audio
 
 
 def compute_rms_envelope(
@@ -168,28 +170,12 @@ def analyze_audio(
     if not video_path.exists():
         raise FileNotFoundError(f"Video file not found: {video_path}")
 
-    # Extract audio to temp file
-    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-        tmp_path = Path(tmp.name)
+    audio = extract_audio_to_numpy(video_path, config.sample_rate)
 
-    try:
-        extract_audio(video_path, tmp_path, config.sample_rate)
+    rms, chunk_duration = compute_rms_envelope(audio, config.sample_rate, config.chunk_ms)
 
-        # Load audio
-        audio, sr = librosa.load(tmp_path, sr=config.sample_rate, mono=True)
+    spikes = detect_spikes(rms, chunk_duration, config)
 
-        # Compute RMS envelope
-        rms, chunk_duration = compute_rms_envelope(audio, sr, config.chunk_ms)
+    spikes = merge_nearby_spikes(spikes, config.min_spike_gap)
 
-        # Detect spikes
-        spikes = detect_spikes(rms, chunk_duration, config)
-
-        # Merge nearby spikes
-        spikes = merge_nearby_spikes(spikes, config.min_spike_gap)
-
-        return spikes
-
-    finally:
-        # Clean up temp file
-        if tmp_path.exists():
-            os.unlink(tmp_path)
+    return spikes

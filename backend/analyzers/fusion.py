@@ -224,11 +224,21 @@ def analyze_full(
     Returns:
         Ranked list of clip candidates
     """
-    # Run analyzers
-    audio_spikes = analyze_audio(video_path, audio_config)
-    chat_moments = analyze_chat(chat_path, chat_config)
+    from concurrent.futures import ThreadPoolExecutor, as_completed
 
-    # Fuse signals
+    audio_spikes = []
+    chat_moments = []
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        audio_future = executor.submit(analyze_audio, video_path, audio_config)
+        chat_future = executor.submit(analyze_chat, chat_path, chat_config)
+
+        for future in as_completed([audio_future, chat_future]):
+            if future == audio_future:
+                audio_spikes = future.result()
+            else:
+                chat_moments = future.result()
+
     candidates = fuse_signals(audio_spikes, chat_moments, fusion_config)
 
     return candidates
