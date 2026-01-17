@@ -19,17 +19,21 @@ ClipDetector/
 ├── backend/              # Python FastAPI backend
 │   ├── main.py           # API entry point
 │   ├── requirements.txt
+│   ├── bin/              # External binaries (git-ignored)
+│   │   └── Rhubarb-Lip-Sync-1.14.0-macOS/
 │   └── analyzers/        # Analysis modules
 │       ├── audio.py      # Audio spike detection
 │       ├── chat.py       # Chat hype moment detection
 │       ├── speech.py     # Speech transcription + keyword detection
-│       └── fusion.py     # Signal fusion and clip ranking
+│       ├── fusion.py     # Signal fusion and clip ranking
+│       └── lipsync.py    # Lip-sync video generation
 ├── frontend/             # Next.js React frontend
 │   └── src/app/          # App router pages (/, /review)
 ├── data/                 # Local data storage (git-ignored)
 │   ├── vods/             # Place VOD video files here
 │   ├── chats/            # Place chat JSON files here
-│   └── clips/            # Exported clips and TTS intro audio files
+│   ├── clips/            # Exported clips, TTS audio, and animated videos
+│   └── avatars/          # Avatar mouth shape PNGs for lip-sync
 ├── docs/                 # Reference documentation
 └── README.md
 ```
@@ -40,6 +44,7 @@ ClipDetector/
 - Node.js 18+
 - FFmpeg (for video processing)
 - Docker (optional, for TTS voice-over feature)
+- Rhubarb Lip Sync (optional, for lip-sync animation feature)
 
 ## Setup
 
@@ -70,6 +75,33 @@ docker run -d -p 5050:5050 travisvn/openai-edge-tts:latest
 ```
 
 See [docs/OPENAI-EDGE-TTS.md](docs/OPENAI-EDGE-TTS.md) for more details.
+
+### Rhubarb Lip Sync (Optional)
+
+For lip-sync animated avatar videos, download Rhubarb Lip Sync:
+
+1. Download from https://github.com/DanielSWolf/rhubarb-lip-sync/releases
+2. Extract to `backend/bin/Rhubarb-Lip-Sync-1.14.0-macOS/`
+3. Ensure the binary is at `backend/bin/Rhubarb-Lip-Sync-1.14.0-macOS/rhubarb`
+
+### Avatar Setup (Optional)
+
+To use lip-sync animation, create avatar directories in `data/avatars/`:
+
+```
+data/avatars/
+└── my_avatar/
+    ├── A.png    # Closed mouth / silence
+    ├── B.png    # "M", "B", "P" sounds
+    ├── C.png    # "EE" sound
+    ├── D.png    # "AI" sound
+    ├── E.png    # "O" sound
+    ├── F.png    # "OO" / "W" sound
+    ├── G.png    # "F" / "V" sound
+    └── H.png    # "L" sound
+```
+
+Recommended image size: 800x800 or 1024x1024 PNG with transparency.
 
 ## Running the Application
 
@@ -400,6 +432,19 @@ curl -X POST http://localhost:8000/api/tts/generate \
   }'
 ```
 
+**Generate TTS with optional lip-sync video:**
+```bash
+curl -X POST http://localhost:8000/api/tts/generate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "Check out this amazing play!",
+    "voice": "en-GB-RyanNeural",
+    "speed": 1.1,
+    "output_filename": "my_intro.mp3",
+    "avatar": "my_avatar"
+  }'
+```
+
 **Parameters:**
 - `text` (required): Text to convert to speech (max 500 characters)
 - `voice` (default: "en-GB-RyanNeural"): Voice identifier
@@ -407,16 +452,59 @@ curl -X POST http://localhost:8000/api/tts/generate \
   - `en-US-AndrewNeural` - American male
 - `speed` (default: 1.0): Playback speed (0.5 to 2.0)
 - `output_filename` (generate only): Output filename (saved to `data/clips/`)
+- `avatar` (optional): Avatar name for lip-sync video generation
 
-**Response (generate):**
+**Response (generate with avatar):**
 ```json
 {
   "success": true,
   "output_path": "clips/my_intro.mp3",
   "duration_seconds": 2.5,
-  "file_size": 40960
+  "file_size": 40960,
+  "video_path": "clips/my_intro.mp4"
 }
 ```
+
+### Lip-Sync Animation
+
+Generate TTS audio with an animated lip-sync video. Requires Rhubarb Lip Sync and avatar PNGs.
+
+**Generate animated video:**
+```bash
+curl -X POST http://localhost:8000/api/tts/animate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "Check out this amazing play!",
+    "voice": "en-GB-RyanNeural",
+    "speed": 1.0,
+    "avatar": "my_avatar",
+    "output_filename": "my_intro"
+  }'
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "video_path": "clips/my_intro.mp4",
+  "audio_path": "clips/my_intro.mp3",
+  "duration_seconds": 2.5
+}
+```
+
+**List available avatars:**
+```bash
+curl http://localhost:8000/api/avatars
+```
+
+**Response:**
+```json
+{
+  "avatars": ["bernard", "queso"]
+}
+```
+
+The generated video has a green background (#00FF00) for easy chroma key compositing.
 
 ## Development
 

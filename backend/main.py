@@ -27,6 +27,15 @@ from analyzers.speech import (
     SpeechMoment,
     TranscriptSegment as SpeechTranscriptSegment,
 )
+from analyzers.lipsync import (
+    generate_lipsync_video,
+    validate_avatar,
+    get_available_avatars,
+    LipsyncConfig,
+    RhubarbNotFoundError,
+    AvatarNotFoundError,
+    MissingMouthShapeError,
+)
 
 app = FastAPI(title="ClipDetector API", version="0.1.0")
 
@@ -41,6 +50,7 @@ app.add_middleware(
 # Base path for data files
 DATA_DIR = Path(__file__).parent.parent / "data"
 PROFILES_DIR = DATA_DIR / "profiles"
+AVATARS_DIR = DATA_DIR / "avatars"
 
 
 # ============ Profile Models ============
@@ -1161,6 +1171,7 @@ class TTSPreviewRequest(BaseModel):
 
 class TTSGenerateRequest(TTSPreviewRequest):
     output_filename: str = Field(..., description="Output filename (without path)")
+    avatar: str | None = Field(default=None, description="Optional avatar for lip-sync video")
 
 
 class TTSGenerateResponse(BaseModel):
@@ -1168,6 +1179,22 @@ class TTSGenerateResponse(BaseModel):
     output_path: str
     duration_seconds: float
     file_size: int
+    video_path: str | None = None
+
+
+class TTSAnimateRequest(BaseModel):
+    text: str = Field(..., min_length=1, max_length=500)
+    voice: TTSVoice = Field(default=TTSVoice.BRITISH_RYAN)
+    speed: float = Field(default=1.0, ge=0.5, le=2.0)
+    avatar: str = Field(..., description="Avatar name (e.g., 'bernard', 'queso')")
+    output_filename: str = Field(..., description="Output filename (without path)")
+
+
+class TTSAnimateResponse(BaseModel):
+    success: bool
+    video_path: str
+    audio_path: str
+    duration_seconds: float
 
 
 TTS_API_URL = "http://localhost:5050/v1/audio/speech"
@@ -1293,9 +1320,152 @@ async def generate_tts(request: TTSGenerateRequest):
     duration = get_audio_duration(output_path)
     file_size = output_path.stat().st_size
 
+    video_path_str = None
+    if request.avatar:
+        try:
+            avatar_path = validate_avatar(AVATARS_DIR, request.avatar)
+        except AvatarNotFoundError as e:
+            output_path.unlink(missing_ok=True)
+            raise HTTPException(
+                status_code=404,
+                detail=f"Avatar '{e.avatar_name}' not found. Available: {', '.join(e.available_avatars)}"
+            )
+        except MissingMouthShapeError as e:
+            output_path.unlink(missing_ok=True)
+            raise HTTPException(
+                status_code=400,
+                detail=f"Avatar '{e.avatar_name}' is missing mouth shapes: {', '.join(e.missing_shapes)}"
+            )
+
+        video_filename = safe_filename.replace(".mp3", ".mp4")
+        video_path = clips_dir / video_filename
+
+        try:
+            generate_lipsync_video(
+                audio_path=output_path,
+                avatar_path=avatar_path,
+                output_path=video_path,
+                config=LipsyncConfig()
+            )
+            video_path_str = f"clips/{video_filename}"
+        except RhubarbNotFoundError:
+            output_path.unlink(missing_ok=True)
+            raise HTTPException(
+                status_code=500,
+                detail="Rhubarb not found. Expected at backend/bin/Rhubarb-Lip-Sync-1.14.0-macOS/rhubarb"
+            )
+        except RuntimeError as e:
+            output_path.unlink(missing_ok=True)
+            raise HTTPException(
+                status_code=500,
+                detail=f"Lip-sync generation failed: {str(e)[:200]}"
+            )
+
     return TTSGenerateResponse(
         success=True,
         output_path=f"clips/{safe_filename}",
         duration_seconds=duration,
         file_size=file_size,
+        video_path=video_path_str,
+    )
+
+
+@app.get("/api/avatars")
+async def list_avatars():
+    return {"avatars": get_available_avatars(AVATARS_DIR)}
+
+
+@app.post("/api/tts/animate", response_model=TTSAnimateResponse)
+async def animate_tts(request: TTSAnimateRequest):
+    try:
+        avatar_path = validate_avatar(AVATARS_DIR, request.avatar)
+    except AvatarNotFoundError as e:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Avatar '{e.avatar_name}' not found. Available: {', '.join(e.available_avatars)}"
+        )
+    except MissingMouthShapeError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Avatar '{e.avatar_name}' is missing mouth shapes: {', '.join(e.missing_shapes)}"
+        )
+
+    clips_dir = DATA_DIR / "clips"
+    clips_dir.mkdir(parents=True, exist_ok=True)
+
+    safe_base = "".join(c for c in request.output_filename if c.isalnum() or c in "._-")
+    if safe_base.endswith(".mp4"):
+        safe_base = safe_base[:-4]
+    if safe_base.endswith(".mp3"):
+        safe_base = safe_base[:-4]
+
+    audio_filename = f"{safe_base}.mp3"
+    video_filename = f"{safe_base}.mp4"
+    audio_path = clips_dir / audio_filename
+    video_path = clips_dir / video_filename
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(
+                TTS_API_URL,
+                json={
+                    "model": "tts-1",
+                    "input": request.text,
+                    "voice": request.voice.value,
+                    "speed": request.speed,
+                    "response_format": "mp3",
+                },
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": "Bearer your_api_key_here",
+                },
+                timeout=30.0,
+            )
+
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"TTS API error: {response.text[:200]}"
+                )
+
+            audio_path.write_bytes(response.content)
+
+        except httpx.ConnectError:
+            raise HTTPException(
+                status_code=503,
+                detail="TTS service unavailable - ensure openai-edge-tts is running on port 5050"
+            )
+        except httpx.TimeoutException:
+            raise HTTPException(
+                status_code=504,
+                detail="TTS request timed out"
+            )
+
+    try:
+        generate_lipsync_video(
+            audio_path=audio_path,
+            avatar_path=avatar_path,
+            output_path=video_path,
+            config=LipsyncConfig()
+        )
+    except RhubarbNotFoundError:
+        audio_path.unlink(missing_ok=True)
+        raise HTTPException(
+            status_code=500,
+            detail="Rhubarb not found. Expected at backend/bin/Rhubarb-Lip-Sync-1.14.0-macOS/rhubarb"
+        )
+    except RuntimeError as e:
+        audio_path.unlink(missing_ok=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Lip-sync generation failed: {str(e)[:200]}"
+        )
+
+    duration = get_audio_duration(audio_path)
+
+    return TTSAnimateResponse(
+        success=True,
+        video_path=f"clips/{video_filename}",
+        audio_path=f"clips/{audio_filename}",
+        duration_seconds=duration,
     )
