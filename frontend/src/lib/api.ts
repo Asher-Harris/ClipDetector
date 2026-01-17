@@ -9,6 +9,7 @@ import type {
   TTSPreviewRequest,
   TTSGenerateRequest,
   TTSGenerateResponse,
+  AvatarListResponse,
 } from "./types";
 
 const API_BASE = "http://localhost:8000";
@@ -186,6 +187,11 @@ export async function generateTTS(
 
 export function getAudioUrl(audioPath: string): string {
   return `${API_BASE}/data/${audioPath}`;
+}
+
+// Avatar API
+export async function getAvatars(): Promise<AvatarListResponse> {
+  return apiRequest("/api/avatars");
 }
 
 // Profile API

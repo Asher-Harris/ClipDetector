@@ -18,7 +18,7 @@ data/
   vods/           # Input video files
   chats/          # Chat JSON files
   clips/          # Exported clips, TTS audio, and animated videos
-  avatars/        # Avatar mouth shape PNGs (A-H.png per avatar)
+  avatars/        # Avatar mouth shape PNGs (A.png, B.png per avatar)
 ```
 
 ## Commands
@@ -57,7 +57,7 @@ Available voices:
 - `en-US-AndrewNeural` (American male)
 
 Avatar requirements (in `data/avatars/{name}/`):
-- PNG files: A.png, B.png, C.png, D.png, E.png, F.png, G.png, H.png
+- PNG files: A.png (mouth closed), B.png (mouth open)
 - Recommended size: 800x800 or 1024x1024
 - Output video uses green background (#00FF00) for chroma key
 

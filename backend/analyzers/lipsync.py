@@ -18,6 +18,10 @@ class LipsyncConfig:
     background_color: str = "00FF00"
     video_codec: str = "libx264"
     audio_codec: str = "aac"
+    smooth_frames: int = 3
+    cue_offset: float = -0.025
+    blur_sigma: float = 1
+    talk_cycle_rate: float = 3.0
 
 
 class RhubarbNotFoundError(Exception):
@@ -42,7 +46,7 @@ class MissingMouthShapeError(Exception):
         )
 
 
-REQUIRED_SHAPES = ["A", "B", "C", "D", "E", "F", "G", "H"]
+REQUIRED_SHAPES = ["A", "B"]
 
 
 def get_rhubarb_path() -> Path:
@@ -149,41 +153,42 @@ def run_rhubarb(audio_path: Path) -> list[MouthCue]:
 
 
 def build_lipsync_filtergraph(cues: list[MouthCue], config: LipsyncConfig, duration: float) -> str:
-    shape_to_input = {"A": 0, "B": 1, "C": 2, "D": 3, "E": 4, "F": 5, "G": 6, "H": 7}
-
-    shape_intervals: dict[str, list[tuple[float, float]]] = {shape: [] for shape in shape_to_input}
+    talking_intervals: list[tuple[float, float]] = []
     for cue in cues:
-        shape_intervals[cue.shape].append((cue.start, cue.end))
-
-    used_shapes = {shape for shape, intervals in shape_intervals.items() if intervals}
-
-    filters = [f"color=c=#{config.background_color}:s=800x800:r={config.fps}:d={duration}[bg]"]
-
-    for shape in REQUIRED_SHAPES:
-        if shape in used_shapes:
-            input_idx = shape_to_input[shape]
-            filters.append(f"[{input_idx}:v]scale=800:800,format=rgba[shape{input_idx}]")
-
-    current_base = "bg"
-    overlay_idx = 0
-
-    for shape in REQUIRED_SHAPES:
-        intervals = shape_intervals.get(shape, [])
-        if not intervals:
+        if cue.shape == "A":
             continue
+        start = max(0, cue.start + config.cue_offset)
+        end = max(0, cue.end + config.cue_offset)
+        if end > start:
+            talking_intervals.append((start, end))
 
-        input_idx = shape_to_input[shape]
-        enable_parts = [f"between(t,{start},{end})" for start, end in intervals]
-        enable_expr = "+".join(enable_parts)
+    filters = [
+        f"color=c=#{config.background_color}:s=800x800:r={config.fps}:d={duration}[bg]",
+        "[0:v]scale=800:800,format=rgba[mouth_closed]",
+        "[1:v]scale=800:800,format=rgba[mouth_open]",
+    ]
 
-        output_label = f"out{overlay_idx}"
-        filters.append(
-            f"[{current_base}][shape{input_idx}]overlay=0:0:enable='{enable_expr}'[{output_label}]"
-        )
-        current_base = output_label
-        overlay_idx += 1
+    filters.append("[bg][mouth_closed]overlay=0:0[with_closed]")
 
-    filters.append(f"[{current_base}]copy[outv]")
+    if talking_intervals:
+        talking_parts = [f"between(t,{start},{end})" for start, end in talking_intervals]
+        talking_expr = "+".join(talking_parts)
+        cycle_expr = f"mod(floor(t*{config.talk_cycle_rate}*2),2)"
+        enable_expr = f"({talking_expr})*{cycle_expr}"
+        filters.append(f"[with_closed][mouth_open]overlay=0:0:enable='{enable_expr}'[animated]")
+        current_base = "animated"
+    else:
+        current_base = "with_closed"
+
+    if config.smooth_frames > 1:
+        weights = " ".join(["1"] * config.smooth_frames)
+        filters.append(f"[{current_base}]tmix=frames={config.smooth_frames}:weights='{weights}'[smoothed]")
+        current_base = "smoothed"
+
+    if config.blur_sigma > 0:
+        filters.append(f"[{current_base}]gblur=sigma={config.blur_sigma}[outv]")
+    else:
+        filters.append(f"[{current_base}]copy[outv]")
 
     return ";".join(filters)
 
@@ -213,16 +218,10 @@ def generate_lipsync_video(
         "ffmpeg", "-y",
         "-loop", "1", "-t", str(duration), "-i", str(avatar_path / "A.png"),
         "-loop", "1", "-t", str(duration), "-i", str(avatar_path / "B.png"),
-        "-loop", "1", "-t", str(duration), "-i", str(avatar_path / "C.png"),
-        "-loop", "1", "-t", str(duration), "-i", str(avatar_path / "D.png"),
-        "-loop", "1", "-t", str(duration), "-i", str(avatar_path / "E.png"),
-        "-loop", "1", "-t", str(duration), "-i", str(avatar_path / "F.png"),
-        "-loop", "1", "-t", str(duration), "-i", str(avatar_path / "G.png"),
-        "-loop", "1", "-t", str(duration), "-i", str(avatar_path / "H.png"),
         "-i", str(audio_path),
         "-filter_complex", filter_complex,
         "-map", "[outv]",
-        "-map", "8:a",
+        "-map", "2:a",
         "-t", str(duration),
         "-c:v", config.video_codec,
         "-preset", "fast",
@@ -230,7 +229,7 @@ def generate_lipsync_video(
         "-r", str(config.fps),
         "-c:a", config.audio_codec,
         "-b:a", "128k",
-        str(output_path)
+        str(output_path),
     ]
 
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)

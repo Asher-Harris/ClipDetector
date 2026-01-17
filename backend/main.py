@@ -1176,7 +1176,7 @@ class TTSGenerateRequest(TTSPreviewRequest):
 
 class TTSGenerateResponse(BaseModel):
     success: bool
-    output_path: str
+    output_path: str | None = None
     duration_seconds: float
     file_size: int
     video_path: str | None = None
@@ -1348,6 +1348,8 @@ async def generate_tts(request: TTSGenerateRequest):
                 config=LipsyncConfig()
             )
             video_path_str = f"clips/{video_filename}"
+            output_path.unlink(missing_ok=True)
+            file_size = video_path.stat().st_size
         except RhubarbNotFoundError:
             output_path.unlink(missing_ok=True)
             raise HTTPException(
@@ -1361,9 +1363,11 @@ async def generate_tts(request: TTSGenerateRequest):
                 detail=f"Lip-sync generation failed: {str(e)[:200]}"
             )
 
+    audio_output_path = None if request.avatar else f"clips/{safe_filename}"
+
     return TTSGenerateResponse(
         success=True,
-        output_path=f"clips/{safe_filename}",
+        output_path=audio_output_path,
         duration_seconds=duration,
         file_size=file_size,
         video_path=video_path_str,

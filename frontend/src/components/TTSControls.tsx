@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Button, Select } from "./ui";
-import { previewTTS, type ApiError } from "@/lib/api";
+import { previewTTS, getAvatars, type ApiError } from "@/lib/api";
 import {
   type TTSSettings,
   type TTSVoice,
@@ -21,6 +21,8 @@ export function TTSControls({ settings, onChange, disabled }: TTSControlsProps) 
   const [isGenerating, setIsGenerating] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [avatars, setAvatars] = useState<string[]>([]);
+  const [isLoadingAvatars, setIsLoadingAvatars] = useState(true);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
@@ -35,6 +37,20 @@ export function TTSControls({ settings, onChange, disabled }: TTSControlsProps) 
       audioRef.current.play().catch(() => {});
     }
   }, [previewUrl]);
+
+  useEffect(() => {
+    async function fetchAvatars() {
+      try {
+        const response = await getAvatars();
+        setAvatars(response.avatars);
+      } catch {
+        // Silently fail - avatar selection unavailable
+      } finally {
+        setIsLoadingAvatars(false);
+      }
+    }
+    fetchAvatars();
+  }, []);
 
   const handleTextChange = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -56,6 +72,17 @@ export function TTSControls({ settings, onChange, disabled }: TTSControlsProps) 
   const handleSpeedChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       onChange({ ...currentSettings, speed: parseFloat(e.target.value) });
+      setPreviewUrl(null);
+    },
+    [currentSettings, onChange]
+  );
+
+  const handleAvatarChange = useCallback(
+    (value: string) => {
+      onChange({
+        ...currentSettings,
+        avatar: value === "" ? undefined : value,
+      });
       setPreviewUrl(null);
     },
     [currentSettings, onChange]
@@ -134,6 +161,23 @@ export function TTSControls({ settings, onChange, disabled }: TTSControlsProps) 
             disabled={disabled}
           />
         </div>
+        {avatars.length > 0 && (
+          <div className="flex-1">
+            <label className="block text-xs text-zinc-500 mb-1">Avatar</label>
+            <Select
+              options={[
+                { value: "", label: "None (audio only)" },
+                ...avatars.map((avatar) => ({
+                  value: avatar,
+                  label: avatar.charAt(0).toUpperCase() + avatar.slice(1),
+                })),
+              ]}
+              value={currentSettings.avatar || ""}
+              onChange={handleAvatarChange}
+              disabled={disabled || isLoadingAvatars}
+            />
+          </div>
+        )}
         <div className="w-32">
           <label className="block text-xs text-zinc-500 mb-1">
             Speed: {currentSettings.speed.toFixed(1)}x

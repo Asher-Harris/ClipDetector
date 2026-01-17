@@ -44,6 +44,7 @@ export type TTSSettings = {
   text: string;
   voice: TTSVoice;
   speed: number;
+  avatar?: string;
 };
 
 export const TTS_VOICES: { value: TTSVoice; label: string }[] = [
@@ -108,6 +109,7 @@ export type ExportResult = {
   status: "success" | "error";
   outputPath?: string;
   introPath?: string;
+  introVideoPath?: string;
   error?: string;
 };
 
@@ -220,11 +222,17 @@ export type TTSPreviewRequest = {
 
 export type TTSGenerateRequest = TTSPreviewRequest & {
   output_filename: string;
+  avatar?: string;
 };
 
 export type TTSGenerateResponse = {
   success: boolean;
-  output_path: string;
+  output_path?: string;
   duration_seconds: number;
   file_size: number;
+  video_path?: string;
+};
+
+export type AvatarListResponse = {
+  avatars: string[];
 };

@@ -59,6 +59,7 @@ export function ExportButton({ clips, vodFilename, vodPath }: ExportButtonProps)
       const batchPromises = batch.map(async (clip) => {
         const filename = generateFilename(vodFilename, clip);
         let introPath: string | undefined;
+        let introVideoPath: string | undefined;
 
         try {
           const response = await exportClip({
@@ -75,8 +76,12 @@ export function ExportButton({ clips, vodFilename, vodPath }: ExportButtonProps)
               voice: clip.ttsSettings.voice,
               speed: clip.ttsSettings.speed,
               output_filename: introFilename,
+              avatar: clip.ttsSettings.avatar,
             });
             introPath = ttsResponse.output_path;
+            if (ttsResponse.video_path) {
+              introVideoPath = ttsResponse.video_path;
+            }
           }
 
           return {
@@ -84,6 +89,7 @@ export function ExportButton({ clips, vodFilename, vodPath }: ExportButtonProps)
             status: "success" as const,
             outputPath: response.output_path,
             introPath,
+            introVideoPath,
           };
         } catch (err) {
           const apiError = err as ApiError;
@@ -105,6 +111,7 @@ export function ExportButton({ clips, vodFilename, vodPath }: ExportButtonProps)
 
   const successCount = results.filter((r) => r.status === "success").length;
   const introCount = results.filter((r) => r.introPath).length;
+  const videoCount = results.filter((r) => r.introVideoPath).length;
   const errorCount = results.filter((r) => r.status === "error").length;
 
   // Auto-dismiss results after 4 seconds
@@ -137,7 +144,7 @@ export function ExportButton({ clips, vodFilename, vodPath }: ExportButtonProps)
           {successCount > 0 && (
             <span className="text-green-500">
               ✓ {successCount} clip{successCount !== 1 ? "s" : ""} exported
-              {introCount > 0 && ` (${introCount} with intro)`}
+              {introCount > 0 && ` (${introCount} with intro${videoCount > 0 ? `, ${videoCount} with video` : ""})`}
             </span>
           )}
           {successCount > 0 && errorCount > 0 && " · "}
