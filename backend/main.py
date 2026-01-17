@@ -3,7 +3,10 @@ import os
 import re
 import subprocess
 from datetime import datetime
+from enum import Enum
 from pathlib import Path
+
+import httpx
 
 from dotenv import load_dotenv
 
@@ -1141,5 +1144,158 @@ async def export_clip(request: ClipExportRequest):
         success=True,
         output_path=f"clips/{safe_filename}",
         duration=duration,
+        file_size=file_size,
+    )
+
+
+class TTSVoice(str, Enum):
+    BRITISH_RYAN = "en-GB-RyanNeural"
+    AMERICAN_ANDREW = "en-US-AndrewNeural"
+
+
+class TTSPreviewRequest(BaseModel):
+    text: str = Field(..., min_length=1, max_length=500)
+    voice: TTSVoice = Field(default=TTSVoice.BRITISH_RYAN)
+    speed: float = Field(default=1.0, ge=0.5, le=2.0)
+
+
+class TTSGenerateRequest(TTSPreviewRequest):
+    output_filename: str = Field(..., description="Output filename (without path)")
+
+
+class TTSGenerateResponse(BaseModel):
+    success: bool
+    output_path: str
+    duration_seconds: float
+    file_size: int
+
+
+TTS_API_URL = "http://localhost:5050/v1/audio/speech"
+
+
+def get_audio_duration(file_path: Path) -> float:
+    result = subprocess.run(
+        [
+            "ffprobe",
+            "-v", "quiet",
+            "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            str(file_path),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode == 0 and result.stdout.strip():
+        return float(result.stdout.strip())
+    return 0.0
+
+
+@app.post("/api/tts/preview")
+async def preview_tts(request: TTSPreviewRequest):
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(
+                TTS_API_URL,
+                json={
+                    "model": "tts-1",
+                    "input": request.text,
+                    "voice": request.voice.value,
+                    "speed": request.speed,
+                    "response_format": "mp3",
+                },
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": "Bearer your_api_key_here",
+                },
+                timeout=30.0,
+            )
+
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"TTS API error: {response.text[:200]}"
+                )
+
+            return StreamingResponse(
+                iter([response.content]),
+                media_type="audio/mpeg",
+                headers={"Content-Disposition": "inline"},
+            )
+        except httpx.ConnectError:
+            raise HTTPException(
+                status_code=503,
+                detail="TTS service unavailable - ensure openai-edge-tts is running on port 5050"
+            )
+        except httpx.TimeoutException:
+            raise HTTPException(
+                status_code=504,
+                detail="TTS request timed out"
+            )
+
+
+@app.post("/api/tts/generate", response_model=TTSGenerateResponse)
+async def generate_tts(request: TTSGenerateRequest):
+    clips_dir = DATA_DIR / "clips"
+    clips_dir.mkdir(parents=True, exist_ok=True)
+
+    safe_filename = "".join(
+        c for c in request.output_filename
+        if c.isalnum() or c in "._-"
+    )
+    if not safe_filename.endswith(".mp3"):
+        safe_filename += ".mp3"
+
+    output_path = clips_dir / safe_filename
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(
+                TTS_API_URL,
+                json={
+                    "model": "tts-1",
+                    "input": request.text,
+                    "voice": request.voice.value,
+                    "speed": request.speed,
+                    "response_format": "mp3",
+                },
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": "Bearer your_api_key_here",
+                },
+                timeout=30.0,
+            )
+
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"TTS API error: {response.text[:200]}"
+                )
+
+            output_path.write_bytes(response.content)
+
+        except httpx.ConnectError:
+            raise HTTPException(
+                status_code=503,
+                detail="TTS service unavailable - ensure openai-edge-tts is running on port 5050"
+            )
+        except httpx.TimeoutException:
+            raise HTTPException(
+                status_code=504,
+                detail="TTS request timed out"
+            )
+
+    if not output_path.exists():
+        raise HTTPException(
+            status_code=500,
+            detail="TTS generation failed - output file not created"
+        )
+
+    duration = get_audio_duration(output_path)
+    file_size = output_path.stat().st_size
+
+    return TTSGenerateResponse(
+        success=True,
+        output_path=f"clips/{safe_filename}",
+        duration_seconds=duration,
         file_size=file_size,
     )

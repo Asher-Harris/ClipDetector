@@ -1,0 +1,185 @@
+"use client";
+
+import { useState, useRef, useCallback, useEffect } from "react";
+import { Button, Select } from "./ui";
+import { previewTTS, type ApiError } from "@/lib/api";
+import {
+  type TTSSettings,
+  type TTSVoice,
+  TTS_VOICES,
+  DEFAULT_TTS,
+} from "@/lib/types";
+
+interface TTSControlsProps {
+  settings: TTSSettings | undefined;
+  onChange: (settings: TTSSettings) => void;
+  disabled?: boolean;
+}
+
+export function TTSControls({ settings, onChange, disabled }: TTSControlsProps) {
+  const currentSettings = settings || DEFAULT_TTS;
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [previewUrl]);
+
+  useEffect(() => {
+    if (previewUrl && audioRef.current) {
+      audioRef.current.load();
+      audioRef.current.play().catch(() => {});
+    }
+  }, [previewUrl]);
+
+  const handleTextChange = useCallback(
+    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+      onChange({ ...currentSettings, text: e.target.value });
+      setPreviewUrl(null);
+      setError(null);
+    },
+    [currentSettings, onChange]
+  );
+
+  const handleVoiceChange = useCallback(
+    (value: string) => {
+      onChange({ ...currentSettings, voice: value as TTSVoice });
+      setPreviewUrl(null);
+    },
+    [currentSettings, onChange]
+  );
+
+  const handleSpeedChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      onChange({ ...currentSettings, speed: parseFloat(e.target.value) });
+      setPreviewUrl(null);
+    },
+    [currentSettings, onChange]
+  );
+
+  const handlePreview = useCallback(async () => {
+    if (!currentSettings.text.trim()) return;
+
+    setIsGenerating(true);
+    setError(null);
+
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(null);
+    }
+
+    try {
+      const blob = await previewTTS({
+        text: currentSettings.text,
+        voice: currentSettings.voice,
+        speed: currentSettings.speed,
+      });
+      const url = URL.createObjectURL(blob);
+      setPreviewUrl(url);
+    } catch (err) {
+      const apiError = err as ApiError;
+      setError(apiError.message || "Failed to generate preview");
+    } finally {
+      setIsGenerating(false);
+    }
+  }, [currentSettings, previewUrl]);
+
+  const handleClear = useCallback(() => {
+    onChange(DEFAULT_TTS);
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewUrl(null);
+    setError(null);
+  }, [onChange, previewUrl]);
+
+  const hasText = currentSettings.text.trim().length > 0;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-medium text-zinc-300">Intro Voice-over</h3>
+        {hasText && (
+          <button
+            onClick={handleClear}
+            className="text-xs text-zinc-500 hover:text-zinc-300"
+            disabled={disabled}
+          >
+            Clear
+          </button>
+        )}
+      </div>
+
+      <textarea
+        value={currentSettings.text}
+        onChange={handleTextChange}
+        placeholder="Enter intro text (e.g., 'Check out this amazing play!')"
+        disabled={disabled}
+        className="w-full px-3 py-2 rounded-lg bg-zinc-800 text-white border border-zinc-700
+                   focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
+                   disabled:opacity-50 resize-none text-sm placeholder-zinc-500"
+        rows={2}
+        maxLength={500}
+      />
+
+      <div className="flex gap-3">
+        <div className="flex-1">
+          <label className="block text-xs text-zinc-500 mb-1">Voice</label>
+          <Select
+            options={TTS_VOICES}
+            value={currentSettings.voice}
+            onChange={handleVoiceChange}
+            disabled={disabled}
+          />
+        </div>
+        <div className="w-32">
+          <label className="block text-xs text-zinc-500 mb-1">
+            Speed: {currentSettings.speed.toFixed(1)}x
+          </label>
+          <input
+            type="range"
+            min="0.5"
+            max="2.0"
+            step="0.1"
+            value={currentSettings.speed}
+            onChange={handleSpeedChange}
+            disabled={disabled}
+            className="w-full h-10 accent-blue-500 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+          />
+        </div>
+      </div>
+
+      <div className="flex items-center gap-3">
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={handlePreview}
+          disabled={disabled || isGenerating || !hasText}
+          loading={isGenerating}
+        >
+          {isGenerating ? "Generating..." : "Preview"}
+        </Button>
+
+        {previewUrl && (
+          <audio
+            ref={audioRef}
+            src={previewUrl}
+            controls
+            className="h-8 flex-1"
+            style={{ colorScheme: "dark" }}
+          />
+        )}
+      </div>
+
+      {error && <p className="text-xs text-red-400">{error}</p>}
+
+      {hasText && (
+        <p className="text-xs text-zinc-500">
+          {currentSettings.text.length}/500 characters
+        </p>
+      )}
+    </div>
+  );
+}

@@ -28,6 +28,7 @@ export type ClipWithStatus = ClipCandidateResult & {
   status: ClipStatus;
   trimStart: number;
   trimEnd: number;
+  ttsSettings?: TTSSettings;
 };
 
 export type AnalysisResult = {
@@ -37,11 +38,31 @@ export type AnalysisResult = {
   analyzedAt: string;
 };
 
+export type TTSVoice = "en-GB-RyanNeural" | "en-US-AndrewNeural";
+
+export type TTSSettings = {
+  text: string;
+  voice: TTSVoice;
+  speed: number;
+};
+
+export const TTS_VOICES: { value: TTSVoice; label: string }[] = [
+  { value: "en-GB-RyanNeural", label: "British (Ryan)" },
+  { value: "en-US-AndrewNeural", label: "American (Andrew)" },
+];
+
+export const DEFAULT_TTS: TTSSettings = {
+  text: "",
+  voice: "en-GB-RyanNeural",
+  speed: 1.0,
+};
+
 export type ClipStatusMap = {
   [clipId: string]: {
     status: ClipStatus;
     trimStart?: number;
     trimEnd?: number;
+    ttsSettings?: TTSSettings;
   };
 };
 
@@ -86,6 +107,7 @@ export type ExportResult = {
   clipId: string;
   status: "success" | "error";
   outputPath?: string;
+  introPath?: string;
   error?: string;
 };
 
@@ -187,4 +209,22 @@ export const PROFILE_PARAMS: Record<
     step: 0.1,
     category: "thresholds",
   },
+};
+
+// TTS API Types
+export type TTSPreviewRequest = {
+  text: string;
+  voice: TTSVoice;
+  speed: number;
+};
+
+export type TTSGenerateRequest = TTSPreviewRequest & {
+  output_filename: string;
+};
+
+export type TTSGenerateResponse = {
+  success: boolean;
+  output_path: string;
+  duration_seconds: number;
+  file_size: number;
 };

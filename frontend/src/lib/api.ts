@@ -6,6 +6,9 @@ import type {
   Profile,
   ProfileCreateRequest,
   ProfileUpdateRequest,
+  TTSPreviewRequest,
+  TTSGenerateRequest,
+  TTSGenerateResponse,
 } from "./types";
 
 const API_BASE = "http://localhost:8000";
@@ -151,6 +154,38 @@ export async function exportClip(
 // Get URL for exported clip
 export function getClipUrl(clipPath: string): string {
   return `${API_BASE}/data/${clipPath}`;
+}
+
+// TTS API
+export async function previewTTS(request: TTSPreviewRequest): Promise<Blob> {
+  const response = await fetch(`${API_BASE}/api/tts/preview`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw {
+      status: response.status,
+      message: error.detail || "TTS preview failed",
+    } as ApiError;
+  }
+
+  return response.blob();
+}
+
+export async function generateTTS(
+  request: TTSGenerateRequest
+): Promise<TTSGenerateResponse> {
+  return apiRequest("/api/tts/generate", {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
+}
+
+export function getAudioUrl(audioPath: string): string {
+  return `${API_BASE}/data/${audioPath}`;
 }
 
 // Profile API

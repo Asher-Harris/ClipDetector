@@ -16,7 +16,7 @@ frontend/         # Next.js 16 + React 19 + TypeScript + Tailwind
 data/
   vods/           # Input video files
   chats/          # Chat JSON files
-  clips/          # Exported clips
+  clips/          # Exported clips and TTS intro audio files
 ```
 
 ## Commands
@@ -31,8 +31,16 @@ cd frontend && npm run dev                  # Frontend :3000
 ```
 POST /api/analyze/full   - Run analysis (video_path, chat_path)
 POST /api/clips/export   - Export clip via FFmpeg (vod_path, start_time, end_time, output_filename)
+POST /api/tts/preview    - Preview TTS audio (text, voice, speed) - returns audio stream
+POST /api/tts/generate   - Generate and save TTS audio (text, voice, speed, output_filename)
 GET  /data/vods/{file}   - Stream video
 ```
+
+## TTS Integration
+
+Requires openai-edge-tts running on port 5050. Available voices:
+- `en-GB-RyanNeural` (British male)
+- `en-US-AndrewNeural` (American male)
 
 ## Supported Formats
 

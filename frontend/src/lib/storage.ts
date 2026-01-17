@@ -1,6 +1,7 @@
 const STORAGE_KEYS = {
   ANALYSIS_RESULT: "clipdetector_analysis",
   CLIP_STATUSES: "clipdetector_statuses",
+  FINALIZED_CLIPS: "clipdetector_finalized",
 } as const;
 
 export function loadFromStorage<T>(key: string, defaultValue: T): T {

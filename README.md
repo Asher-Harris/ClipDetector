@@ -10,7 +10,7 @@ ClipDetector processes locally downloaded Twitch VODs (video files + JSON chat l
 - **Audio levels**: Loudness spikes and peaks
 - **Speech content**: Transcription, excitement phrases, and speaking rate
 
-When a clip-worthy moment is detected, the system grabs 30 seconds before and after the timestamp. Candidates are surfaced in a web UI for review, trimming, and export.
+When a clip-worthy moment is detected, the system grabs 30 seconds before and after the timestamp. Candidates are surfaced in a web UI for review, trimming, and export. You can also generate **TTS voice-over intros** for each clip using a local text-to-speech service.
 
 ## Project Structure
 
@@ -29,7 +29,8 @@ ClipDetector/
 ├── data/                 # Local data storage (git-ignored)
 │   ├── vods/             # Place VOD video files here
 │   ├── chats/            # Place chat JSON files here
-│   └── clips/            # Exported clips saved here
+│   └── clips/            # Exported clips and TTS intro audio files
+├── docs/                 # Reference documentation
 └── README.md
 ```
 
@@ -38,6 +39,7 @@ ClipDetector/
 - Python 3.12 (required - 3.13+ not yet supported by ML dependencies)
 - Node.js 18+
 - FFmpeg (for video processing)
+- Docker (optional, for TTS voice-over feature)
 
 ## Setup
 
@@ -58,6 +60,16 @@ pip install -r requirements.txt
 cd frontend
 npm install
 ```
+
+### TTS Service (Optional)
+
+For voice-over intro generation, run the openai-edge-tts Docker container:
+
+```bash
+docker run -d -p 5050:5050 travisvn/openai-edge-tts:latest
+```
+
+See [docs/OPENAI-EDGE-TTS.md](docs/OPENAI-EDGE-TTS.md) for more details.
 
 ## Running the Application
 
@@ -87,8 +99,10 @@ The UI will be available at http://localhost:3000
 3. Place the chat JSON in `data/chats/`
 4. Open http://localhost:3000 and select your VOD and chat files
 5. Run analysis to detect clip candidates
-6. Review candidates at `/review` - approve, reject, and trim clips
-7. Export approved clips to `data/clips/`
+6. Review candidates at `/review` - approve or reject clips
+7. Click "Finalize" to review approved clips one-by-one at `/finalize`
+8. Fine-tune trim points and add TTS voice-over intros
+9. Export finalized clips to `data/clips/`
 
 ## API Endpoints
 
@@ -358,6 +372,51 @@ curl -X POST http://localhost:8000/api/clips/export \
 ```
 
 Uses stream copy (`-c copy`) for fast extraction, falling back to re-encoding if needed.
+
+### TTS Voice-over
+
+Generate text-to-speech audio for clip intros. Requires the openai-edge-tts service running on port 5050.
+
+**Preview TTS (returns audio stream):**
+```bash
+curl -X POST http://localhost:8000/api/tts/preview \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "Check out this amazing play!",
+    "voice": "en-GB-RyanNeural",
+    "speed": 1.0
+  }' --output preview.mp3
+```
+
+**Generate and save TTS:**
+```bash
+curl -X POST http://localhost:8000/api/tts/generate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "Check out this amazing play!",
+    "voice": "en-GB-RyanNeural",
+    "speed": 1.1,
+    "output_filename": "my_intro.mp3"
+  }'
+```
+
+**Parameters:**
+- `text` (required): Text to convert to speech (max 500 characters)
+- `voice` (default: "en-GB-RyanNeural"): Voice identifier
+  - `en-GB-RyanNeural` - British male (recommended)
+  - `en-US-AndrewNeural` - American male
+- `speed` (default: 1.0): Playback speed (0.5 to 2.0)
+- `output_filename` (generate only): Output filename (saved to `data/clips/`)
+
+**Response (generate):**
+```json
+{
+  "success": true,
+  "output_path": "clips/my_intro.mp3",
+  "duration_seconds": 2.5,
+  "file_size": 40960
+}
+```
 
 ## Development
 

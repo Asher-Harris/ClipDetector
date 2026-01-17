@@ -7,7 +7,6 @@ import { useToast } from "@/context/ToastContext";
 import { ClipList } from "@/components/ClipList";
 import { VideoPlayer } from "@/components/VideoPlayer";
 import { Timeline } from "@/components/Timeline";
-import { ExportButton } from "@/components/ExportButton";
 import { Button, Card } from "@/components/ui";
 
 export default function ReviewPage() {
@@ -20,6 +19,11 @@ export default function ReviewPage() {
     updateTrim,
     clearAnalysisResult,
   } = useApp();
+
+  const approvedClips = useMemo(
+    () => clipsWithStatus.filter((c) => c.status === "approved"),
+    [clipsWithStatus]
+  );
 
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
@@ -142,7 +146,13 @@ export default function ReviewPage() {
             </p>
           </div>
           <div className="flex items-center gap-3">
-            <ExportButton clips={clipsWithStatus} vodFilename={vodFilename} vodPath={analysisResult.videoPath} />
+            <Button
+              variant="primary"
+              onClick={() => router.push("/finalize")}
+              disabled={approvedClips.length === 0}
+            >
+              Finalize {approvedClips.length} Clip{approvedClips.length !== 1 ? "s" : ""}
+            </Button>
             <Button variant="secondary" onClick={handleNewAnalysis}>
               New Analysis
             </Button>
