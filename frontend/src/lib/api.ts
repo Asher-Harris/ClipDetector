@@ -57,6 +57,11 @@ export type FullAnalysisRequest = {
   chat_weight?: number;
   audio_threshold_multiplier?: number;
   chat_threshold?: number;
+  include_speech?: boolean;
+  speech_model_size?: string;
+  speech_language?: string;
+  speech_keyword_weight?: number;
+  speech_rate_weight?: number;
 };
 
 export async function runFullAnalysis(
@@ -66,6 +71,66 @@ export async function runFullAnalysis(
     method: "POST",
     body: JSON.stringify(request),
   });
+}
+
+export type AnalysisProgress = {
+  stage: string;
+  percent: number;
+  message: string;
+};
+
+export async function runFullAnalysisWithProgress(
+  request: FullAnalysisRequest,
+  onProgress: (progress: AnalysisProgress) => void
+): Promise<FullAnalysisResponse> {
+  const response = await fetch(`${API_BASE}/api/analyze/full/stream`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+
+  if (!response.ok) {
+    throw { status: response.status, message: "Request failed" } as ApiError;
+  }
+
+  const reader = response.body?.getReader();
+  if (!reader) {
+    throw { status: 500, message: "No response body" } as ApiError;
+  }
+
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+
+    let eventType = "";
+    for (const line of lines) {
+      if (line.startsWith("event: ")) {
+        eventType = line.slice(7);
+      } else if (line.startsWith("data: ")) {
+        const data = JSON.parse(line.slice(6));
+        if (eventType === "progress") {
+          onProgress({
+            stage: data.stage,
+            percent: data.percent,
+            message: data.message,
+          });
+        } else if (eventType === "complete") {
+          return data as FullAnalysisResponse;
+        } else if (eventType === "error") {
+          throw { status: 500, message: data.error } as ApiError;
+        }
+      }
+    }
+  }
+
+  throw { status: 500, message: "Stream ended without completion" } as ApiError;
 }
 
 // Get video URL for playback

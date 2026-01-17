@@ -5,6 +5,10 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -14,6 +18,12 @@ from pydantic import BaseModel, Field
 from analyzers.audio import analyze_audio, AnalysisConfig as AudioConfig, AudioSpike
 from analyzers.chat import analyze_chat, ChatConfig, ChatMoment
 from analyzers.fusion import analyze_full, FusionConfig, ClipCandidate
+from analyzers.speech import (
+    analyze_speech,
+    SpeechConfig,
+    SpeechMoment,
+    TranscriptSegment as SpeechTranscriptSegment,
+)
 
 app = FastAPI(title="ClipDetector API", version="0.1.0")
 
@@ -465,6 +475,214 @@ async def analyze_chat_endpoint(request: ChatAnalysisRequest):
     )
 
 
+class SpeechAnalysisRequest(BaseModel):
+    file_path: str = Field(..., description="Path to video file relative to /data folder")
+    model_size: str = Field(
+        default="base",
+        description="Whisper model size: tiny, base, small, medium, large"
+    )
+    language: str = Field(
+        default="en",
+        description="Language code (e.g., 'en', 'es') or empty for auto-detection"
+    )
+
+
+class TranscriptSegmentResult(BaseModel):
+    start: float
+    end: float
+    text: str
+
+
+class SpeechMomentResult(BaseModel):
+    timestamp: float
+    intensity: float
+    duration: float
+    moment_type: str
+    details: dict
+
+
+class SpeechAnalysisResponse(BaseModel):
+    file_path: str
+    moments: list[SpeechMomentResult]
+    total_moments: int
+    transcript_segments: list[TranscriptSegmentResult]
+    config: dict
+
+
+@app.post("/api/analyze/speech", response_model=SpeechAnalysisResponse)
+async def analyze_speech_endpoint(request: SpeechAnalysisRequest):
+    """Analyze a video file for speech-based clip moments.
+
+    Transcribes audio using Whisper and detects:
+    - Keyword matches (excitement phrases like "oh my god", "let's go")
+    - Speech rate spikes (talking unusually fast)
+
+    The file_path should be relative to the /data folder.
+    Example: "vods/my_stream.mp4"
+    """
+    try:
+        video_path = resolve_safe_path(request.file_path, DATA_DIR)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid file path")
+
+    if not video_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"File not found: {request.file_path}"
+        )
+
+    config = SpeechConfig(
+        model_size=request.model_size,
+        language=request.language,
+    )
+
+    try:
+        moments, segments = analyze_speech(video_path, config)
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    return SpeechAnalysisResponse(
+        file_path=request.file_path,
+        moments=[
+            SpeechMomentResult(
+                timestamp=m.timestamp,
+                intensity=m.intensity,
+                duration=m.duration,
+                moment_type=m.moment_type,
+                details=m.details,
+            )
+            for m in moments
+        ],
+        total_moments=len(moments),
+        transcript_segments=[
+            TranscriptSegmentResult(
+                start=s.start,
+                end=s.end,
+                text=s.text,
+            )
+            for s in segments
+        ],
+        config={
+            "model_size": config.model_size,
+            "language": config.language,
+        }
+    )
+
+
+@app.get("/api/analyze/speech/stream")
+async def analyze_speech_stream(
+    file_path: str,
+    model_size: str = "base",
+    language: str = "en",
+):
+    """Stream speech analysis progress via Server-Sent Events.
+
+    Use this endpoint for long VODs to get real-time progress updates.
+
+    Query parameters:
+    - file_path: Path to video file relative to /data folder
+    - model_size: Whisper model size (tiny, base, small, medium, large)
+    - language: Language code (e.g., 'en') or empty for auto-detection
+    """
+    try:
+        video_path = resolve_safe_path(file_path, DATA_DIR)
+    except ValueError:
+        async def error_stream():
+            yield f"event: error\ndata: {json.dumps({'error': 'Invalid file path'})}\n\n"
+        return StreamingResponse(error_stream(), media_type="text/event-stream")
+
+    if not video_path.exists():
+        async def error_stream():
+            yield f"event: error\ndata: {json.dumps({'error': f'File not found: {file_path}'})}\n\n"
+        return StreamingResponse(error_stream(), media_type="text/event-stream")
+
+    config = SpeechConfig(
+        model_size=model_size,
+        language=language,
+    )
+
+    import asyncio
+    import queue
+    import threading
+
+    progress_queue: queue.Queue = queue.Queue()
+
+    def progress_callback(stage: str, percent: int, message: str):
+        progress_queue.put({
+            "type": "progress",
+            "stage": stage,
+            "percent": percent,
+            "message": message,
+        })
+
+    def run_analysis():
+        try:
+            moments, segments = analyze_speech(video_path, config, progress_callback)
+            progress_queue.put({
+                "type": "complete",
+                "result": {
+                    "file_path": file_path,
+                    "moments": [
+                        {
+                            "timestamp": m.timestamp,
+                            "intensity": m.intensity,
+                            "duration": m.duration,
+                            "moment_type": m.moment_type,
+                            "details": m.details,
+                        }
+                        for m in moments
+                    ],
+                    "total_moments": len(moments),
+                    "transcript_segments": [
+                        {"start": s.start, "end": s.end, "text": s.text}
+                        for s in segments
+                    ],
+                    "config": {
+                        "model_size": config.model_size,
+                        "language": config.language,
+                    }
+                }
+            })
+        except Exception as e:
+            progress_queue.put({
+                "type": "error",
+                "error": str(e),
+            })
+
+    async def event_stream():
+        thread = threading.Thread(target=run_analysis)
+        thread.start()
+
+        while True:
+            try:
+                item = progress_queue.get(timeout=0.1)
+                if item["type"] == "progress":
+                    yield f"event: progress\ndata: {json.dumps(item)}\n\n"
+                elif item["type"] == "complete":
+                    yield f"event: complete\ndata: {json.dumps(item['result'])}\n\n"
+                    break
+                elif item["type"] == "error":
+                    yield f"event: error\ndata: {json.dumps({'error': item['error']})}\n\n"
+                    break
+            except queue.Empty:
+                if not thread.is_alive():
+                    break
+                await asyncio.sleep(0.1)
+
+        thread.join()
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        }
+    )
+
+
 class FullAnalysisRequest(BaseModel):
     video_path: str = Field(..., description="Path to video file relative to /data folder")
     chat_path: str = Field(..., description="Path to chat JSON file relative to /data folder")
@@ -487,6 +705,20 @@ class FullAnalysisRequest(BaseModel):
     audio_intensity_cap: float | None = Field(default=None, ge=1.0, le=10.0)
     synergy_bonus: float | None = Field(default=None, ge=0.0, le=2.0)
     min_score: float | None = Field(default=None, ge=0.0, le=50.0)
+    include_speech: bool = Field(
+        default=False,
+        description="Include speech analysis (transcription + keyword/rate detection)"
+    )
+    speech_model_size: str = Field(
+        default="base",
+        description="Whisper model size: tiny, base, small, medium, large"
+    )
+    speech_language: str = Field(
+        default="en",
+        description="Language code for speech recognition"
+    )
+    speech_keyword_weight: float | None = Field(default=None, ge=0.0, le=5.0)
+    speech_rate_weight: float | None = Field(default=None, ge=0.0, le=5.0)
 
 
 class ClipCandidateResult(BaseModel):
@@ -568,7 +800,16 @@ async def analyze_full_endpoint(request: FullAnalysisRequest):
         audio_intensity_cap=request.audio_intensity_cap or 2.5,
         synergy_bonus=request.synergy_bonus or 0.75,
         min_score=request.min_score or 3.0,
+        speech_keyword_weight=request.speech_keyword_weight or 1.5,
+        speech_rate_weight=request.speech_rate_weight or 1.0,
     )
+
+    speech_config = None
+    if request.include_speech:
+        speech_config = SpeechConfig(
+            model_size=request.speech_model_size,
+            language=request.speech_language,
+        )
 
     try:
         candidates = analyze_full(
@@ -577,6 +818,8 @@ async def analyze_full_endpoint(request: FullAnalysisRequest):
             audio_config=audio_config,
             chat_config=chat_config,
             fusion_config=fusion_config,
+            include_speech=request.include_speech,
+            speech_config=speech_config,
         )
     except json.JSONDecodeError as e:
         raise HTTPException(status_code=400, detail=f"Invalid chat JSON file: {e}")
@@ -610,8 +853,169 @@ async def analyze_full_endpoint(request: FullAnalysisRequest):
             "audio_intensity_cap": fusion_config.audio_intensity_cap,
             "synergy_bonus": fusion_config.synergy_bonus,
             "min_score": fusion_config.min_score,
+            "include_speech": request.include_speech,
+            "speech_model_size": request.speech_model_size if request.include_speech else None,
+            "speech_language": request.speech_language if request.include_speech else None,
+            "speech_keyword_weight": fusion_config.speech_keyword_weight if request.include_speech else None,
+            "speech_rate_weight": fusion_config.speech_rate_weight if request.include_speech else None,
         }
     )
+
+
+@app.post("/api/analyze/full/stream")
+async def analyze_full_stream(request: FullAnalysisRequest):
+    """Stream full analysis progress via Server-Sent Events.
+
+    Use this endpoint when speech analysis is enabled to get real-time progress updates.
+    Returns the same response as /api/analyze/full but streams progress events.
+    """
+    import asyncio
+    import queue
+    import threading
+
+    try:
+        video_path = resolve_safe_path(request.video_path, DATA_DIR)
+    except ValueError:
+        async def error_stream():
+            yield f"event: error\ndata: {json.dumps({'error': 'Invalid video path'})}\n\n"
+        return StreamingResponse(error_stream(), media_type="text/event-stream")
+
+    try:
+        chat_path = resolve_safe_path(request.chat_path, DATA_DIR)
+    except ValueError:
+        async def error_stream():
+            yield f"event: error\ndata: {json.dumps({'error': 'Invalid chat path'})}\n\n"
+        return StreamingResponse(error_stream(), media_type="text/event-stream")
+
+    if not video_path.exists():
+        async def error_stream():
+            yield f"event: error\ndata: {json.dumps({'error': f'Video file not found: {request.video_path}'})}\n\n"
+        return StreamingResponse(error_stream(), media_type="text/event-stream")
+
+    if not chat_path.exists():
+        async def error_stream():
+            yield f"event: error\ndata: {json.dumps({'error': f'Chat file not found: {request.chat_path}'})}\n\n"
+        return StreamingResponse(error_stream(), media_type="text/event-stream")
+
+    audio_config = AudioConfig(
+        threshold_multiplier=request.audio_threshold_multiplier or 2.5,
+    )
+    chat_config = ChatConfig(
+        threshold=request.chat_threshold or 3.0,
+    )
+    fusion_config = FusionConfig(
+        overlap_window=request.overlap_window,
+        clip_buffer=request.clip_buffer,
+        audio_weight=request.audio_weight or 1.0,
+        chat_weight=request.chat_weight or 1.5,
+        audio_intensity_cap=request.audio_intensity_cap or 2.5,
+        synergy_bonus=request.synergy_bonus or 0.75,
+        min_score=request.min_score or 3.0,
+        speech_keyword_weight=request.speech_keyword_weight or 1.5,
+        speech_rate_weight=request.speech_rate_weight or 1.0,
+    )
+    speech_config = None
+    if request.include_speech:
+        speech_config = SpeechConfig(
+            model_size=request.speech_model_size,
+            language=request.speech_language,
+        )
+
+    progress_queue: queue.Queue = queue.Queue()
+
+    def progress_callback(stage: str, percent: int, message: str):
+        progress_queue.put({
+            "type": "progress",
+            "stage": stage,
+            "percent": percent,
+            "message": message,
+        })
+
+    def run_analysis():
+        try:
+            # Send initial progress
+            progress_queue.put({
+                "type": "progress",
+                "stage": "analyzing",
+                "percent": 0,
+                "message": "Starting analysis...",
+            })
+
+            candidates = analyze_full(
+                video_path,
+                chat_path,
+                audio_config=audio_config,
+                chat_config=chat_config,
+                fusion_config=fusion_config,
+                include_speech=request.include_speech,
+                speech_config=speech_config,
+                speech_progress_callback=progress_callback if request.include_speech else None,
+            )
+
+            progress_queue.put({
+                "type": "complete",
+                "result": {
+                    "video_path": request.video_path,
+                    "chat_path": request.chat_path,
+                    "candidates": [
+                        {
+                            "timestamp": c.timestamp,
+                            "score": c.score,
+                            "signals": c.signals,
+                            "clip_start": c.clip_start,
+                            "clip_end": c.clip_end,
+                        }
+                        for c in candidates
+                    ],
+                    "total_candidates": len(candidates),
+                    "config": {
+                        "overlap_window": fusion_config.overlap_window,
+                        "clip_buffer": fusion_config.clip_buffer,
+                        "dedup_window": fusion_config.dedup_window,
+                        "audio_weight": fusion_config.audio_weight,
+                        "chat_weight": fusion_config.chat_weight,
+                        "audio_threshold_multiplier": audio_config.threshold_multiplier,
+                        "chat_threshold": chat_config.threshold,
+                        "audio_intensity_cap": fusion_config.audio_intensity_cap,
+                        "synergy_bonus": fusion_config.synergy_bonus,
+                        "min_score": fusion_config.min_score,
+                        "include_speech": request.include_speech,
+                        "speech_model_size": request.speech_model_size if request.include_speech else None,
+                        "speech_language": request.speech_language if request.include_speech else None,
+                        "speech_keyword_weight": fusion_config.speech_keyword_weight if request.include_speech else None,
+                        "speech_rate_weight": fusion_config.speech_rate_weight if request.include_speech else None,
+                    }
+                }
+            })
+        except Exception as e:
+            progress_queue.put({
+                "type": "error",
+                "error": str(e),
+            })
+
+    async def event_stream():
+        thread = threading.Thread(target=run_analysis)
+        thread.start()
+
+        while True:
+            try:
+                item = progress_queue.get(timeout=0.5)
+                if item["type"] == "progress":
+                    yield f"event: progress\ndata: {json.dumps(item)}\n\n"
+                elif item["type"] == "complete":
+                    yield f"event: complete\ndata: {json.dumps(item['result'])}\n\n"
+                    break
+                elif item["type"] == "error":
+                    yield f"event: error\ndata: {json.dumps({'error': item['error']})}\n\n"
+                    break
+            except queue.Empty:
+                if not thread.is_alive():
+                    break
+                await asyncio.sleep(0.1)
+
+        thread.join()
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
 class ClipExportRequest(BaseModel):

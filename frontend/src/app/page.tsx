@@ -2,18 +2,20 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Button, Card, Spinner } from "@/components/ui";
+import { Button, Card, Select, Spinner } from "@/components/ui";
 import { FileSelector } from "@/components/FileSelector";
 import { ProfileSelector } from "@/components/ProfileSelector";
 import { ProfileEditor } from "@/components/ProfileEditor";
 import {
   listFiles,
   runFullAnalysis,
+  runFullAnalysisWithProgress,
   checkHealth,
   listProfiles,
   createProfile,
   updateProfile,
   deleteProfile,
+  type AnalysisProgress,
 } from "@/lib/api";
 import { useToast } from "@/context/ToastContext";
 import { useApp } from "@/context/AppContext";
@@ -36,6 +38,9 @@ export default function Home() {
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [editingProfile, setEditingProfile] = useState<Profile | null>(null);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [includeSpeech, setIncludeSpeech] = useState(false);
+  const [speechModelSize, setSpeechModelSize] = useState("base");
+  const [analysisProgress, setAnalysisProgress] = useState<AnalysisProgress | null>(null);
 
   // Check health and load files/profiles on mount
   useEffect(() => {
@@ -66,15 +71,28 @@ export default function Home() {
     const profile = profiles.find((p) => p.id === selectedProfileId);
 
     setIsAnalyzing(true);
+    setAnalysisProgress(null);
+
+    const requestParams = {
+      video_path: `vods/${selectedVod}`,
+      chat_path: `chats/${selectedChat}`,
+      audio_weight: profile?.audio_weight,
+      chat_weight: profile?.chat_weight,
+      audio_threshold_multiplier: profile?.audio_threshold_multiplier,
+      chat_threshold: profile?.chat_threshold,
+      include_speech: includeSpeech,
+      speech_model_size: includeSpeech ? speechModelSize : undefined,
+      speech_keyword_weight: profile?.speech_keyword_weight,
+      speech_rate_weight: profile?.speech_rate_weight,
+    };
+
     try {
-      const result = await runFullAnalysis({
-        video_path: `vods/${selectedVod}`,
-        chat_path: `chats/${selectedChat}`,
-        audio_weight: profile?.audio_weight,
-        chat_weight: profile?.chat_weight,
-        audio_threshold_multiplier: profile?.audio_threshold_multiplier,
-        chat_threshold: profile?.chat_threshold,
-      });
+      let result;
+      if (includeSpeech) {
+        result = await runFullAnalysisWithProgress(requestParams, setAnalysisProgress);
+      } else {
+        result = await runFullAnalysis(requestParams);
+      }
 
       setAnalysisResult({
         videoPath: result.video_path,
@@ -90,6 +108,7 @@ export default function Home() {
       addToast("error", message);
     } finally {
       setIsAnalyzing(false);
+      setAnalysisProgress(null);
     }
   };
 
@@ -212,6 +231,42 @@ export default function Home() {
           )}
         </Card>
 
+        {/* Speech Analysis */}
+        <Card className="p-6 mb-6">
+          <h2 className="text-lg font-semibold mb-4">Speech Analysis</h2>
+          <div className="flex items-center gap-4">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={includeSpeech}
+                onChange={(e) => setIncludeSpeech(e.target.checked)}
+                disabled={isAnalyzing}
+                className="w-4 h-4 rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500 focus:ring-offset-zinc-900"
+              />
+              <span>Enable speech transcription</span>
+            </label>
+            {includeSpeech && (
+              <Select
+                value={speechModelSize}
+                onChange={setSpeechModelSize}
+                options={[
+                  { value: "tiny", label: "Tiny (fastest)" },
+                  { value: "base", label: "Base (recommended)" },
+                  { value: "small", label: "Small (better accuracy)" },
+                  { value: "medium", label: "Medium (slow)" },
+                ]}
+                disabled={isAnalyzing}
+                className="w-48"
+              />
+            )}
+          </div>
+          {includeSpeech && (
+            <p className="mt-3 text-zinc-400 text-sm">
+              Transcribes audio to detect excitement phrases and fast speech. Adds significant processing time.
+            </p>
+          )}
+        </Card>
+
         {/* Analyze Button */}
         <div className="flex items-center gap-4">
           <Button
@@ -231,9 +286,28 @@ export default function Home() {
         </div>
 
         {isAnalyzing && (
-          <p className="mt-4 text-zinc-400 text-sm">
-            This may take a few minutes depending on the VOD length...
-          </p>
+          <div className="mt-4">
+            {analysisProgress ? (
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-zinc-300">{analysisProgress.message}</span>
+                  <span className="text-zinc-400">{analysisProgress.percent}%</span>
+                </div>
+                <div className="w-full h-2 bg-zinc-800 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-blue-500 transition-all duration-300"
+                    style={{ width: `${analysisProgress.percent}%` }}
+                  />
+                </div>
+              </div>
+            ) : (
+              <p className="text-zinc-400 text-sm">
+                {includeSpeech
+                  ? "Starting speech transcription..."
+                  : "This may take a few minutes depending on the VOD length..."}
+              </p>
+            )}
+          </div>
         )}
 
         {/* Instructions */}

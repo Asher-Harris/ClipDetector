@@ -46,16 +46,20 @@ export type ClipStatusMap = {
 };
 
 // Signal type for badge rendering
-export type SignalType = "audio" | "chat";
+export type SignalType = "audio" | "chat" | "speech_keyword" | "speech_rate";
 
 export const SIGNAL_LABELS: Record<SignalType, string> = {
   audio: "Audio",
   chat: "Chat",
+  speech_keyword: "Speech",
+  speech_rate: "Fast Talk",
 };
 
 export const SIGNAL_COLORS: Record<SignalType, string> = {
   audio: "bg-blue-500",
   chat: "bg-purple-500",
+  speech_keyword: "bg-green-500",
+  speech_rate: "bg-yellow-500",
 };
 
 // Generate deterministic clip ID
@@ -96,6 +100,8 @@ export type Profile = {
   chat_weight: number;
   audio_threshold_multiplier: number;
   chat_threshold: number;
+  speech_keyword_weight?: number;
+  speech_rate_weight?: number;
 };
 
 export type ProfileCreateRequest = {
@@ -104,6 +110,8 @@ export type ProfileCreateRequest = {
   chat_weight: number;
   audio_threshold_multiplier: number;
   chat_threshold: number;
+  speech_keyword_weight?: number;
+  speech_rate_weight?: number;
 };
 
 export type ProfileUpdateRequest = Partial<ProfileCreateRequest>;
@@ -114,6 +122,8 @@ export const DEFAULT_PROFILE_VALUES: ProfileCreateRequest = {
   chat_weight: 1.5,
   audio_threshold_multiplier: 2.5,
   chat_threshold: 3.0,
+  speech_keyword_weight: 1.5,
+  speech_rate_weight: 1.0,
 };
 
 export type ProfileParamMeta = {
@@ -140,6 +150,22 @@ export const PROFILE_PARAMS: Record<
   chat_weight: {
     label: "Chat Weight",
     description: "Weight for chat activity signals",
+    min: 0,
+    max: 5,
+    step: 0.1,
+    category: "weights",
+  },
+  speech_keyword_weight: {
+    label: "Speech Keyword Weight",
+    description: "Weight for detected excitement phrases",
+    min: 0,
+    max: 5,
+    step: 0.1,
+    category: "weights",
+  },
+  speech_rate_weight: {
+    label: "Speech Rate Weight",
+    description: "Weight for fast speech detection",
     min: 0,
     max: 5,
     step: 0.1,

@@ -1,8 +1,10 @@
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Callable
 
 from .audio import AudioSpike, analyze_audio, AnalysisConfig as AudioConfig
 from .chat import ChatMoment, analyze_chat, ChatConfig
+from .speech import SpeechMoment, analyze_speech, SpeechConfig
 
 
 @dataclass
@@ -34,12 +36,15 @@ class FusionConfig:
     audio_intensity_cap: float = 2.5 # max audio intensity to prevent runaway scores
     synergy_bonus: float = 0.75      # bonus multiplier per additional signal type
     min_score: float = 3.0           # minimum score to include a candidate
+    speech_keyword_weight: float = 1.5   # keyword_match moments
+    speech_rate_weight: float = 1.0      # speech_rate_spike moments
 
 
 def normalize_signals(
     audio_spikes: list[AudioSpike],
     chat_moments: list[ChatMoment],
-    config: FusionConfig
+    config: FusionConfig,
+    speech_moments: list[SpeechMoment] | None = None,
 ) -> list[Signal]:
     """Convert all analyzer outputs to normalized signals."""
     signals = []
@@ -59,6 +64,22 @@ def normalize_signals(
             signal_type="chat",
             weight=config.chat_weight,
         ))
+
+    if speech_moments:
+        for moment in speech_moments:
+            if moment.moment_type == "keyword_match":
+                weight = config.speech_keyword_weight
+                signal_type = "speech_keyword"
+            else:
+                weight = config.speech_rate_weight
+                signal_type = "speech_rate"
+
+            signals.append(Signal(
+                timestamp=moment.timestamp,
+                intensity=moment.intensity,
+                signal_type=signal_type,
+                weight=weight,
+            ))
 
     # Sort by timestamp
     signals.sort(key=lambda s: s.timestamp)
@@ -152,7 +173,8 @@ def deduplicate_candidates(
 def fuse_signals(
     audio_spikes: list[AudioSpike],
     chat_moments: list[ChatMoment],
-    config: FusionConfig | None = None
+    config: FusionConfig | None = None,
+    speech_moments: list[SpeechMoment] | None = None,
 ) -> list[ClipCandidate]:
     """Main fusion function: combine signals and produce ranked clip candidates.
 
@@ -160,6 +182,7 @@ def fuse_signals(
         audio_spikes: Results from audio analyzer
         chat_moments: Results from chat analyzer
         config: Fusion configuration
+        speech_moments: Optional results from speech analyzer
 
     Returns:
         List of clip candidates sorted by score descending
@@ -168,7 +191,7 @@ def fuse_signals(
         config = FusionConfig()
 
     # Normalize all signals
-    signals = normalize_signals(audio_spikes, chat_moments, config)
+    signals = normalize_signals(audio_spikes, chat_moments, config, speech_moments)
 
     if not signals:
         return []
@@ -210,9 +233,12 @@ def analyze_full(
     chat_path: Path,
     audio_config: AudioConfig | None = None,
     chat_config: ChatConfig | None = None,
-    fusion_config: FusionConfig | None = None
+    fusion_config: FusionConfig | None = None,
+    include_speech: bool = False,
+    speech_config: SpeechConfig | None = None,
+    speech_progress_callback: Callable[[str, int, str], None] | None = None,
 ) -> list[ClipCandidate]:
-    """Full analysis pipeline: audio + chat + fusion.
+    """Full analysis pipeline: audio + chat + optional speech + fusion.
 
     Args:
         video_path: Path to the video file
@@ -220,6 +246,9 @@ def analyze_full(
         audio_config: Audio analysis configuration
         chat_config: Chat analysis configuration
         fusion_config: Fusion configuration
+        include_speech: Whether to include speech analysis
+        speech_config: Speech analysis configuration
+        speech_progress_callback: Optional callback for speech analysis progress
 
     Returns:
         Ranked list of clip candidates
@@ -228,7 +257,9 @@ def analyze_full(
 
     audio_spikes = []
     chat_moments = []
+    speech_moments = []
 
+    # Run audio + chat in parallel (both are light CPU operations)
     with ThreadPoolExecutor(max_workers=2) as executor:
         audio_future = executor.submit(analyze_audio, video_path, audio_config)
         chat_future = executor.submit(analyze_chat, chat_path, chat_config)
@@ -239,6 +270,14 @@ def analyze_full(
             else:
                 chat_moments = future.result()
 
-    candidates = fuse_signals(audio_spikes, chat_moments, fusion_config)
+    # Run speech analysis sequentially (heavy GPU/CPU, avoid resource contention)
+    if include_speech:
+        speech_moments, _ = analyze_speech(
+            video_path,
+            speech_config,
+            speech_progress_callback
+        )
+
+    candidates = fuse_signals(audio_spikes, chat_moments, fusion_config, speech_moments)
 
     return candidates
