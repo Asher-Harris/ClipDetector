@@ -24,7 +24,10 @@ data/
 ## Commands
 
 ```bash
-cd backend && uvicorn main:app --reload    # Backend :8000
+./start.sh                                  # Start all services (recommended)
+
+# Or run individually:
+cd backend && source venv/bin/activate && uvicorn main:app --reload    # Backend :8000
 cd frontend && npm run dev                  # Frontend :3000
 ```
 
