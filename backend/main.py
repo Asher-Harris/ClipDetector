@@ -1085,15 +1085,20 @@ async def export_clip(request: ClipExportRequest):
     output_path = clips_dir / safe_filename
 
     # Build FFmpeg command
+    # Use accurate output-seeking (-ss after -i) to avoid black frames at start
+    # This is slower than input-seeking but produces clean clip boundaries
     duration = request.end_time - request.start_time
     cmd = [
         "ffmpeg",
         "-y",  # Overwrite output
-        "-ss", str(request.start_time),  # Seek to start (before -i for fast seek)
         "-i", str(vod_path),
+        "-ss", str(request.start_time),  # Seek after input for frame-accurate cutting
         "-t", str(duration),
-        "-c", "copy",  # Stream copy for speed
-        "-avoid_negative_ts", "make_zero",
+        "-c:v", "libx264",  # Re-encode video for clean start
+        "-preset", "fast",
+        "-crf", "18",  # High quality
+        "-c:a", "aac",
+        "-b:a", "192k",
         str(output_path),
     ]
 
@@ -1102,34 +1107,14 @@ async def export_clip(request: ClipExportRequest):
             cmd,
             capture_output=True,
             text=True,
-            timeout=300,  # 5 minute timeout
+            timeout=600,  # 10 minute timeout for re-encoding
         )
 
         if result.returncode != 0:
-            # If stream copy fails, try re-encoding
-            cmd_reencode = [
-                "ffmpeg",
-                "-y",
-                "-ss", str(request.start_time),
-                "-i", str(vod_path),
-                "-t", str(duration),
-                "-c:v", "libx264",
-                "-preset", "fast",
-                "-c:a", "aac",
-                str(output_path),
-            ]
-            result = subprocess.run(
-                cmd_reencode,
-                capture_output=True,
-                text=True,
-                timeout=600,  # 10 minute timeout for re-encoding
+            raise HTTPException(
+                status_code=500,
+                detail=f"FFmpeg failed: {result.stderr[:500]}"
             )
-
-            if result.returncode != 0:
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"FFmpeg failed: {result.stderr[:500]}"
-                )
 
     except subprocess.TimeoutExpired:
         raise HTTPException(
