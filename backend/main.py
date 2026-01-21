@@ -1085,20 +1085,16 @@ async def export_clip(request: ClipExportRequest):
     output_path = clips_dir / safe_filename
 
     # Build FFmpeg command
-    # Use accurate output-seeking (-ss after -i) to avoid black frames at start
-    # This is slower than input-seeking but produces clean clip boundaries
+    # Use input-seeking (-ss before -i) + stream copy for fast extraction
     duration = request.end_time - request.start_time
     cmd = [
         "ffmpeg",
         "-y",  # Overwrite output
+        "-ss", str(request.start_time),  # Input seeking (fast)
         "-i", str(vod_path),
-        "-ss", str(request.start_time),  # Seek after input for frame-accurate cutting
         "-t", str(duration),
-        "-c:v", "libx264",  # Re-encode video for clean start
-        "-preset", "fast",
-        "-crf", "18",  # High quality
-        "-c:a", "aac",
-        "-b:a", "192k",
+        "-c", "copy",  # Stream copy (no re-encoding)
+        "-avoid_negative_ts", "make_zero",
         str(output_path),
     ]
 
@@ -1107,7 +1103,7 @@ async def export_clip(request: ClipExportRequest):
             cmd,
             capture_output=True,
             text=True,
-            timeout=600,  # 10 minute timeout for re-encoding
+            timeout=60,  # 1 minute timeout (stream copy is fast)
         )
 
         if result.returncode != 0:

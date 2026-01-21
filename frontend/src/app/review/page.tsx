@@ -7,6 +7,7 @@ import { useToast } from "@/context/ToastContext";
 import { ClipList } from "@/components/ClipList";
 import { VideoPlayer } from "@/components/VideoPlayer";
 import { Timeline } from "@/components/Timeline";
+import { ExportButton } from "@/components/ExportButton";
 import { Button, Card } from "@/components/ui";
 
 export default function ReviewPage() {
@@ -146,13 +147,11 @@ export default function ReviewPage() {
             </p>
           </div>
           <div className="flex items-center gap-3">
-            <Button
-              variant="primary"
-              onClick={() => router.push("/finalize")}
-              disabled={approvedClips.length === 0}
-            >
-              Finalize {approvedClips.length} Clip{approvedClips.length !== 1 ? "s" : ""}
-            </Button>
+            <ExportButton
+              clips={approvedClips}
+              vodFilename={vodFilename}
+              vodPath={analysisResult.videoPath}
+            />
             <Button variant="secondary" onClick={handleNewAnalysis}>
               New Analysis
             </Button>
