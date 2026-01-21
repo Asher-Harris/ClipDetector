@@ -8,16 +8,14 @@ interface ClipListProps {
   clips: ClipWithStatus[];
   selectedClipId: string | null;
   onSelectClip: (id: string) => void;
-  onApprove: (id: string) => void;
-  onReject: (id: string) => void;
+  onReset: (id: string) => void;
 }
 
 export function ClipList({
   clips,
   selectedClipId,
   onSelectClip,
-  onApprove,
-  onReject,
+  onReset,
 }: ClipListProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
@@ -40,9 +38,9 @@ export function ClipList({
     }
   }, [selectedClipId]);
 
-  const approvedCount = clips.filter((c) => c.status === "approved").length;
-  const rejectedCount = clips.filter((c) => c.status === "rejected").length;
-  const pendingCount = clips.filter((c) => c.status === "pending").length;
+  const editedCount = clips.filter(
+    (c) => c.trimStart !== c.clip_start || c.trimEnd !== c.clip_end
+  ).length;
 
   return (
     <div className="flex flex-col h-full">
@@ -51,9 +49,7 @@ export function ClipList({
         <h2 className="text-lg font-semibold mb-2">Clip Candidates</h2>
         <div className="flex gap-4 text-sm text-zinc-400">
           <span>{clips.length} total</span>
-          <span className="text-green-400">{approvedCount} approved</span>
-          <span className="text-red-400">{rejectedCount} rejected</span>
-          <span>{pendingCount} pending</span>
+          <span className="text-green-400">{editedCount} edited</span>
         </div>
       </div>
 
@@ -65,8 +61,7 @@ export function ClipList({
               clip={clip}
               isSelected={clip.id === selectedClipId}
               onSelect={() => onSelectClip(clip.id)}
-              onApprove={() => onApprove(clip.id)}
-              onReject={() => onReject(clip.id)}
+              onReset={() => onReset(clip.id)}
             />
           </div>
         ))}

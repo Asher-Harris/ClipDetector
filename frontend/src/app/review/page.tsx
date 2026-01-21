@@ -3,7 +3,6 @@
 import { useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useApp } from "@/context/AppContext";
-import { useToast } from "@/context/ToastContext";
 import { ClipList } from "@/components/ClipList";
 import { VideoPlayer } from "@/components/VideoPlayer";
 import { Timeline } from "@/components/Timeline";
@@ -12,17 +11,18 @@ import { Button, Card } from "@/components/ui";
 
 export default function ReviewPage() {
   const router = useRouter();
-  const { addToast } = useToast();
   const {
     analysisResult,
     clipsWithStatus,
-    setClipStatus,
     updateTrim,
     clearAnalysisResult,
   } = useApp();
 
-  const approvedClips = useMemo(
-    () => clipsWithStatus.filter((c) => c.status === "approved"),
+  const editedClips = useMemo(
+    () =>
+      clipsWithStatus.filter(
+        (c) => c.trimStart !== c.clip_start || c.trimEnd !== c.clip_end
+      ),
     [clipsWithStatus]
   );
 
@@ -60,29 +60,14 @@ export default function ReviewPage() {
     [clipsWithStatus]
   );
 
-  const handleApprove = useCallback(
+  const handleReset = useCallback(
     (id: string) => {
       const clip = clipsWithStatus.find((c) => c.id === id);
-      if (clip?.status === "approved") {
-        setClipStatus(id, "pending");
-      } else {
-        setClipStatus(id, "approved");
-        addToast("success", "Clip approved");
+      if (clip) {
+        updateTrim(id, clip.clip_start, clip.clip_end);
       }
     },
-    [clipsWithStatus, setClipStatus, addToast]
-  );
-
-  const handleReject = useCallback(
-    (id: string) => {
-      const clip = clipsWithStatus.find((c) => c.id === id);
-      if (clip?.status === "rejected") {
-        setClipStatus(id, "pending");
-      } else {
-        setClipStatus(id, "rejected");
-      }
-    },
-    [clipsWithStatus, setClipStatus]
+    [clipsWithStatus, updateTrim]
   );
 
   const handleTrimStartChange = useCallback(
@@ -150,7 +135,7 @@ export default function ReviewPage() {
           </div>
           <div className="flex items-center gap-3">
             <ExportButton
-              clips={approvedClips}
+              clips={editedClips}
               vodFilename={vodFilename}
               vodPath={analysisResult.videoPath}
             />
@@ -171,8 +156,7 @@ export default function ReviewPage() {
                 clips={clipsWithStatus}
                 selectedClipId={selectedClipId}
                 onSelectClip={handleSelectClip}
-                onApprove={handleApprove}
-                onReject={handleReject}
+                onReset={handleReset}
               />
             </div>
           </div>
