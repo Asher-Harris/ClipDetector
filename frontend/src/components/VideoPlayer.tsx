@@ -15,6 +15,10 @@ interface VideoPlayerProps {
   onSeek: (time: number) => void;
   onTrimStartChange: (time: number) => void;
   onTrimEndChange: (time: number) => void;
+  zoom?: number;
+  viewportCenter?: number;
+  onZoomChange?: (zoom: number) => void;
+  onViewportCenterChange?: (center: number) => void;
 }
 
 const MIN_CLIP_DURATION = 5;
@@ -29,6 +33,10 @@ function VideoPlayerInner({
   onSeek,
   onTrimStartChange,
   onTrimEndChange,
+  zoom: controlledZoom,
+  viewportCenter: controlledViewportCenter,
+  onZoomChange,
+  onViewportCenterChange,
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const progressRef = useRef<HTMLDivElement>(null);
@@ -45,10 +53,30 @@ function VideoPlayerInner({
     target: "start" | "end" | "playhead" | null;
   }>({ isDragging: false, target: null });
 
-  // Zoom state: 1 = full timeline, 2 = 50% visible, etc.
-  const [zoom, setZoom] = useState(1);
-  // Viewport center as percentage of total duration (0-100)
-  const [viewportCenter, setViewportCenter] = useState(50);
+  // Zoom state: controlled or internal
+  const [internalZoom, setInternalZoom] = useState(1);
+  const [internalViewportCenter, setInternalViewportCenter] = useState(50);
+
+  const zoom = controlledZoom ?? internalZoom;
+  const viewportCenter = controlledViewportCenter ?? internalViewportCenter;
+
+  const setZoom = useCallback((value: number | ((prev: number) => number)) => {
+    const newValue = typeof value === 'function' ? value(zoom) : value;
+    if (onZoomChange) {
+      onZoomChange(newValue);
+    } else {
+      setInternalZoom(newValue);
+    }
+  }, [zoom, onZoomChange]);
+
+  const setViewportCenter = useCallback((value: number | ((prev: number) => number)) => {
+    const newValue = typeof value === 'function' ? value(viewportCenter) : value;
+    if (onViewportCenterChange) {
+      onViewportCenterChange(newValue);
+    } else {
+      setInternalViewportCenter(newValue);
+    }
+  }, [viewportCenter, onViewportCenterChange]);
 
   const videoUrl = getVideoUrl(vodPath);
 

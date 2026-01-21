@@ -18,6 +18,8 @@ interface TimelineProps {
   trimEnd?: number;
   onSeek: (time: number) => void;
   onMarkerClick: (id: string) => void;
+  zoom?: number;
+  viewportCenter?: number;
 }
 
 export function Timeline({
@@ -29,29 +31,54 @@ export function Timeline({
   trimEnd,
   onSeek,
   onMarkerClick,
+  zoom = 1,
+  viewportCenter = 50,
 }: TimelineProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   if (duration === 0) return null;
 
-  const timeToPercent = (time: number) => Math.min(100, Math.max(0, (time / duration) * 100));
+  // Calculate viewport boundaries based on zoom (same logic as VideoPlayer)
+  const visiblePercent = 100 / zoom;
+  const halfVisible = visiblePercent / 2;
+  const clampedCenter = Math.max(halfVisible, Math.min(100 - halfVisible, viewportCenter));
+  const viewportStart = clampedCenter - halfVisible;
+  const viewportEnd = clampedCenter + halfVisible;
+
+  // Convert time to global percentage (0-100 of full duration)
+  const timeToGlobalPercent = (time: number) => (duration > 0 ? (time / duration) * 100 : 0);
+
+  // Convert time to viewport percentage (position within visible area)
+  const timeToPercent = (time: number) => {
+    const globalPercent = timeToGlobalPercent(time);
+    return ((globalPercent - viewportStart) / visiblePercent) * 100;
+  };
+
+  // Convert viewport percentage to time
+  const viewportPercentToTime = (viewportPercent: number) => {
+    const globalPercent = viewportStart + (viewportPercent / 100) * visiblePercent;
+    return (globalPercent / 100) * duration;
+  };
 
   const handleClick = (e: React.MouseEvent) => {
     const rect = containerRef.current?.getBoundingClientRect();
     if (!rect) return;
     const x = e.clientX - rect.left;
-    const percent = x / rect.width;
-    const time = percent * duration;
+    const viewportPercent = (x / rect.width) * 100;
+    const time = viewportPercentToTime(viewportPercent);
     onSeek(Math.max(0, Math.min(time, duration)));
   };
 
   // Calculate max score for scaling
   const maxScore = Math.max(...markers.map((m) => m.score), 1);
 
-  // Generate time labels
+  // Generate time labels for visible range
   const labelCount = 5;
+  const visibleStartTime = (viewportStart / 100) * duration;
+  const visibleEndTime = (viewportEnd / 100) * duration;
+  const visibleDuration = visibleEndTime - visibleStartTime;
   const timeLabels = Array.from({ length: labelCount }, (_, i) => {
-    const time = (duration / (labelCount - 1)) * i;
+    const time = visibleStartTime + (visibleDuration / (labelCount - 1)) * i;
     return { time, label: formatTime(time) };
   });
 
@@ -62,7 +89,7 @@ export function Timeline({
       {/* Timeline Track */}
       <div
         ref={containerRef}
-        className="relative h-8 bg-zinc-800 rounded cursor-pointer mb-2"
+        className="relative h-8 bg-zinc-800 rounded cursor-pointer mb-2 overflow-hidden"
         onClick={handleClick}
       >
         {/* Selected clip region */}

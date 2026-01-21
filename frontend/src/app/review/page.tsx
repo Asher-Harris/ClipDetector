@@ -29,6 +29,8 @@ export default function ReviewPage() {
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [zoom, setZoom] = useState(1);
+  const [viewportCenter, setViewportCenter] = useState(50);
 
   // Find selected clip
   const selectedClip = useMemo(
@@ -189,6 +191,10 @@ export default function ReviewPage() {
                 onSeek={handleSeek}
                 onTrimStartChange={handleTrimStartChange}
                 onTrimEndChange={handleTrimEndChange}
+                zoom={zoom}
+                viewportCenter={viewportCenter}
+                onZoomChange={setZoom}
+                onViewportCenterChange={setViewportCenter}
               />
             ) : (
               <Card className="p-8 text-center aspect-video flex items-center justify-center">
@@ -208,6 +214,8 @@ export default function ReviewPage() {
               trimEnd={selectedClip?.trimEnd}
               onSeek={handleSeek}
               onMarkerClick={handleMarkerClick}
+              zoom={zoom}
+              viewportCenter={viewportCenter}
             />
           </div>
         </div>
