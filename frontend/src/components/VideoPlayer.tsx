@@ -1,9 +1,76 @@
 "use client";
 
-import { useRef, useCallback, useState, useEffect } from "react";
+import React, { useRef, useCallback, useState, useEffect, memo } from "react";
 import { getVideoUrl } from "@/lib/api";
 import { formatTime } from "@/lib/format";
 import { Button, Spinner } from "./ui";
+
+interface WaveformProps {
+  blob: Blob;
+  width: number;
+  height: number;
+  color?: string;
+}
+
+const WAVEFORM_SAMPLES = 2000;
+
+const Waveform = memo(function Waveform({ blob, width, height, color = "#3b82f6" }: WaveformProps) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [waveformData, setWaveformData] = useState<number[] | null>(null);
+
+  useEffect(() => {
+    const analyzeAudio = async () => {
+      try {
+        const audioContext = new AudioContext();
+        const arrayBuffer = await blob.arrayBuffer();
+        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+
+        const channelData = audioBuffer.getChannelData(0);
+        const blockSize = Math.floor(channelData.length / WAVEFORM_SAMPLES);
+        const peaks: number[] = [];
+
+        for (let i = 0; i < WAVEFORM_SAMPLES; i++) {
+          const start = i * blockSize;
+          let max = 0;
+          for (let j = 0; j < blockSize; j++) {
+            const absValue = Math.abs(channelData[start + j] || 0);
+            if (absValue > max) max = absValue;
+          }
+          peaks.push(max);
+        }
+
+        setWaveformData(peaks);
+        audioContext.close();
+      } catch {
+        // Audio decode failed - video might not have audio track
+      }
+    };
+
+    analyzeAudio();
+  }, [blob]);
+
+  useEffect(() => {
+    if (!canvasRef.current || !waveformData) return;
+
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    ctx.clearRect(0, 0, width, height);
+    ctx.fillStyle = color;
+
+    const barWidth = width / waveformData.length;
+    const centerY = height / 2;
+
+    waveformData.forEach((peak, i) => {
+      const barHeight = peak * height * 0.9;
+      const x = i * barWidth;
+      ctx.fillRect(x, centerY - barHeight / 2, Math.max(1, barWidth - 1), barHeight);
+    });
+  }, [waveformData, width, height, color]);
+
+  return <canvas ref={canvasRef} width={width} height={height} className="w-full h-full" />;
+});
 
 interface VideoPlayerProps {
   vodPath: string;
@@ -44,6 +111,7 @@ function VideoPlayerInner({
   const [duration, setDuration] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [internalTime, setInternalTime] = useState(0);
+  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const lastSeekTime = useRef<number | null>(null);
   const prevExternalTimeRef = useRef<number>(currentTime);
 
@@ -90,6 +158,20 @@ function VideoPlayerInner({
 
   // Convert time to global percentage (0-100 of full duration)
   const timeToGlobalPercent = (time: number) => (duration > 0 ? (time / duration) * 100 : 0);
+
+  // Fetch video as blob for audio visualization
+  useEffect(() => {
+    const fetchAudioBlob = async () => {
+      try {
+        const response = await fetch(videoUrl);
+        const blob = await response.blob();
+        setAudioBlob(blob);
+      } catch {
+        // Silently fail - waveform is optional
+      }
+    };
+    fetchAudioBlob();
+  }, [videoUrl]);
 
   // Keep viewport centered on playhead when zoomed
   useEffect(() => {
@@ -396,15 +478,33 @@ function VideoPlayerInner({
         {/* Progress Bar with Trim Handles */}
         <div
           ref={progressRef}
-          className="relative h-8 mb-4 cursor-pointer select-none"
+          className="relative h-12 mb-4 cursor-pointer select-none overflow-hidden"
           onClick={handleProgressClick}
         >
+          {/* Audio Waveform */}
+          {audioBlob && (
+            <div
+              className="absolute top-0 bottom-0 flex items-center opacity-40 pointer-events-none"
+              style={{
+                width: `${zoom * 100}%`,
+                left: `${-viewportStart * zoom}%`,
+              }}
+            >
+              <Waveform
+                blob={audioBlob}
+                width={WAVEFORM_SAMPLES}
+                height={48}
+                color="#3b82f6"
+              />
+            </div>
+          )}
+
           {/* Background track */}
-          <div className="absolute top-1/2 -translate-y-1/2 left-0 right-0 h-2 bg-zinc-700 rounded-full" />
+          <div className="absolute top-1/2 -translate-y-1/2 left-0 right-0 h-2 bg-zinc-700/50 rounded-full" />
 
           {/* Trim region highlight */}
           <div
-            className="absolute top-1/2 -translate-y-1/2 h-2 bg-blue-600/40 rounded-full"
+            className="absolute top-1/2 -translate-y-1/2 h-10 bg-blue-600/20 rounded"
             style={{
               left: `${trimStartPercent}%`,
               width: `${Math.min(100, trimEndPercent) - trimStartPercent}%`,
@@ -414,7 +514,7 @@ function VideoPlayerInner({
           {/* Played portion within trim */}
           {internalTime >= trimStart && internalTime <= trimEnd && (
             <div
-              className="absolute top-1/2 -translate-y-1/2 h-2 bg-blue-500 rounded-l-full"
+              className="absolute top-1/2 -translate-y-1/2 h-10 bg-blue-500/30 rounded-l"
               style={{
                 left: `${trimStartPercent}%`,
                 width: `${Math.max(0, playheadPercent - trimStartPercent)}%`,
@@ -429,7 +529,7 @@ function VideoPlayerInner({
             onMouseDown={startDrag("start")}
           >
             <div className="relative -translate-x-1/2">
-              <div className="w-1 h-6 bg-green-500 rounded-full group-hover:bg-green-400 transition-colors" />
+              <div className="w-1 h-10 bg-green-500 rounded-full group-hover:bg-green-400 transition-colors" />
               <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-green-600 text-white text-xs px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
                 {formatTime(trimStart)}
               </div>
@@ -443,7 +543,7 @@ function VideoPlayerInner({
             onMouseDown={startDrag("end")}
           >
             <div className="relative -translate-x-1/2">
-              <div className="w-1 h-6 bg-red-500 rounded-full group-hover:bg-red-400 transition-colors" />
+              <div className="w-1 h-10 bg-red-500 rounded-full group-hover:bg-red-400 transition-colors" />
               <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-red-600 text-white text-xs px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
                 {formatTime(trimEnd)}
               </div>
