@@ -121,6 +121,15 @@ function VideoPlayerInner({
     target: "start" | "end" | "playhead" | null;
   }>({ isDragging: false, target: null });
 
+  // Track the current drag position (for snap calculation on release)
+  const currentDragPositionRef = useRef<number>(0);
+
+  // Track when drag ended to prevent click events from firing immediately after
+  const dragEndedAtRef = useRef<number>(0);
+
+  // Snap to playhead toggle
+  const [snapEnabled, setSnapEnabled] = useState(true);
+
   // Zoom state: controlled or internal
   const [internalZoom, setInternalZoom] = useState(1);
   const [internalViewportCenter, setInternalViewportCenter] = useState(50);
@@ -271,9 +280,11 @@ function VideoPlayerInner({
 
     if (dragState.target === "start") {
       const constrainedTime = Math.max(0, Math.min(time, trimEnd - MIN_CLIP_DURATION));
+      currentDragPositionRef.current = constrainedTime;
       onTrimStartChange(constrainedTime);
     } else if (dragState.target === "end") {
       const constrainedTime = Math.min(duration, Math.max(time, trimStart + MIN_CLIP_DURATION));
+      currentDragPositionRef.current = constrainedTime;
       onTrimEndChange(constrainedTime);
     } else if (dragState.target === "playhead") {
       seekTo(time);
@@ -281,10 +292,33 @@ function VideoPlayerInner({
     }
   }, [dragState, duration, trimStart, trimEnd, onTrimStartChange, onTrimEndChange, seekTo, onTimeUpdate, viewportStart, visiblePercent]);
 
-  // Mouse up handler
+  // Snap threshold as percentage of visible viewport (5% of what's visible on screen)
+  const SNAP_THRESHOLD_PERCENT = 2;
+
+  // Mouse up handler - snap to playhead if enabled and close enough
   const handleMouseUp = useCallback(() => {
+    if (snapEnabled && dragState.target && dragState.target !== "playhead" && duration > 0) {
+      const currentDragPosition = currentDragPositionRef.current;
+
+      // Calculate snap threshold based on visible viewport
+      // visiblePercent is the percentage of total duration visible (100/zoom)
+      const visibleDuration = (visiblePercent / 100) * duration;
+      const snapThresholdSeconds = (SNAP_THRESHOLD_PERCENT / 100) * visibleDuration;
+
+      const distanceToPlayhead = Math.abs(currentDragPosition - internalTime);
+
+      if (distanceToPlayhead <= snapThresholdSeconds) {
+        if (dragState.target === "start" && internalTime < trimEnd - MIN_CLIP_DURATION) {
+          onTrimStartChange(internalTime);
+        } else if (dragState.target === "end" && internalTime > trimStart + MIN_CLIP_DURATION) {
+          onTrimEndChange(internalTime);
+        }
+      }
+    }
+    // Record when drag ended to prevent click events from seeking
+    dragEndedAtRef.current = Date.now();
     setDragState({ isDragging: false, target: null });
-  }, []);
+  }, [snapEnabled, dragState.target, trimStart, trimEnd, internalTime, duration, visiblePercent, onTrimStartChange, onTrimEndChange]);
 
   // Add/remove window event listeners for dragging
   useEffect(() => {
@@ -300,7 +334,10 @@ function VideoPlayerInner({
 
   // Handle click on progress bar (seek)
   const handleProgressClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    // Ignore clicks during drag or immediately after drag ended (prevents accidental seeks)
     if (dragState.isDragging) return;
+    if (Date.now() - dragEndedAtRef.current < 100) return;
+
     const rect = progressRef.current?.getBoundingClientRect();
     if (!rect || duration === 0) return;
 
@@ -600,22 +637,57 @@ function VideoPlayerInner({
             </Button>
           </div>
 
-          {/* Zoom Controls */}
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={zoomOut} disabled={zoom <= 1} title="Zoom out (-)">
-              −
-            </Button>
-            <span className="text-xs text-zinc-400 font-mono w-10 text-center">
-              {zoom}x
-            </span>
-            <Button variant="ghost" size="sm" onClick={zoomIn} disabled={zoom >= MAX_ZOOM} title="Zoom in (+)">
-              +
-            </Button>
-            {zoom > 1 && (
-              <Button variant="ghost" size="sm" onClick={resetZoom} title="Reset zoom (0)">
-                1:1
+          <div className="flex items-center gap-4">
+            {/* Snap to Playhead Toggle */}
+            <button
+              onClick={() => setSnapEnabled(!snapEnabled)}
+              className={`p-1.5 rounded transition-colors ${
+                snapEnabled
+                  ? "text-blue-400 bg-blue-500/20 hover:bg-blue-500/30"
+                  : "text-zinc-500 hover:text-zinc-400 hover:bg-zinc-700"
+              }`}
+              title={`Snap to playhead: ${snapEnabled ? "ON" : "OFF"}`}
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                {/* U-shaped magnet */}
+                <path
+                  d="M5 4v10a7 7 0 0 0 14 0V4"
+                  stroke="currentColor"
+                  fill="none"
+                />
+                {/* Red pole */}
+                <rect x="3" y="2" width="4" height="6" rx="1" fill={snapEnabled ? "#ef4444" : "currentColor"} stroke="none" />
+                {/* Blue pole */}
+                <rect x="17" y="2" width="4" height="6" rx="1" fill={snapEnabled ? "#3b82f6" : "currentColor"} stroke="none" />
+              </svg>
+            </button>
+
+            {/* Zoom Controls */}
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="sm" onClick={zoomOut} disabled={zoom <= 1} title="Zoom out (-)">
+                −
               </Button>
-            )}
+              <span className="text-xs text-zinc-400 font-mono w-10 text-center">
+                {zoom}x
+              </span>
+              <Button variant="ghost" size="sm" onClick={zoomIn} disabled={zoom >= MAX_ZOOM} title="Zoom in (+)">
+                +
+              </Button>
+              {zoom > 1 && (
+                <Button variant="ghost" size="sm" onClick={resetZoom} title="Reset zoom (0)">
+                  1:1
+                </Button>
+              )}
+            </div>
           </div>
         </div>
       </div>
