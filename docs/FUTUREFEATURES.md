@@ -12,6 +12,12 @@ Ideas and planned features for expanding ClipDetector's capabilities.
 
 ---
 
+## My Ideas
+
+- Grab VODs from twitch for Jynxzi/Caseoh and display them with image preview. Store a bool value to indicate if we have already processed that VOD. Also have the ability to download the VOD and its corresponding chat with TwitchDownloaderCLI (which I am doing manually currently). Downloading the VOD should set the processed flag to true. Basically a TwitchDownloaderCLI wrapper. This should be 
+- Could we use Twitch clips to determine which clips are likely good clips as well? Obviously clips with a lot of views are very likely to be good, but also if there is a large volume of clips during a timeframe than that likely indicates a good clip. The actual clips are not needed just what timeframe they are in the VOD and either the volume of clips for that timeframe of that specific VOD or at the very least the timeframe of very popular clips for that VOD. Unsure if the Twitch API can do this or if there is a tool to do this. Might not be possible.
+- SMS notifications with the Raspberry Pi Zero W whenever a Jynxzi/Caseoh vod is uploaded.
+
 ## Detection & Analysis
 
 ### Webcam/Facecam Recognition
