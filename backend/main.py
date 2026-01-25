@@ -36,6 +36,8 @@ from analyzers.lipsync import (
     AvatarNotFoundError,
     MissingMouthShapeError,
 )
+from services.twitch import TwitchClient, VodStorage
+from services.downloader import TwitchDownloader
 
 app = FastAPI(title="ClipDetector API", version="0.1.0")
 
@@ -1505,4 +1507,182 @@ async def animate_tts(request: TTSAnimateRequest):
         video_path=f"clips/{video_filename}",
         audio_path=f"clips/{audio_filename}",
         duration_seconds=duration,
+    )
+
+
+# ============ Twitch VOD Endpoints ============
+
+TWITCH_DIR = DATA_DIR / "twitch"
+VODS_STORAGE_PATH = TWITCH_DIR / "vods.json"
+
+
+def get_twitch_config() -> dict | None:
+    client_id = os.getenv("TWITCH_CLIENT_ID")
+    client_secret = os.getenv("TWITCH_CLIENT_SECRET")
+    if not client_id or not client_secret:
+        return None
+    config = load_config()
+    twitch_config = config.get("twitch", {})
+    return {
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "channels": twitch_config.get("channels", []),
+        "cli_path": twitch_config.get("cli_path", "TwitchDownloaderCLI"),
+    }
+
+
+@app.get("/api/twitch/vods")
+async def list_twitch_vods():
+    storage = VodStorage(VODS_STORAGE_PATH)
+    data = storage.load()
+
+    channels = [
+        {"login": login, "display_name": info.get("display_name", login)}
+        for login, info in data.get("channels", {}).items()
+    ]
+
+    return {
+        "channels": channels,
+        "vods": data.get("vods", []),
+    }
+
+
+@app.post("/api/twitch/vods/refresh")
+async def refresh_twitch_vods():
+    twitch_config = get_twitch_config()
+    if not twitch_config:
+        raise HTTPException(
+            status_code=400,
+            detail="Twitch credentials not configured in config.json"
+        )
+
+    client = TwitchClient(
+        client_id=twitch_config["client_id"],
+        client_secret=twitch_config["client_secret"],
+    )
+    storage = VodStorage(VODS_STORAGE_PATH)
+
+    channels_to_fetch = twitch_config.get("channels", [])
+
+    for channel_login in channels_to_fetch:
+        try:
+            user = await client.get_user(channel_login)
+            if not user:
+                continue
+
+            vods = await client.get_channel_vods(user.id, limit=20)
+            storage.merge_vods(
+                channel_login=user.login,
+                channel_info={"id": user.id, "display_name": user.display_name},
+                new_vods=vods,
+            )
+        except Exception:
+            continue
+
+    data = storage.load()
+    channels = [
+        {"login": login, "display_name": info.get("display_name", login)}
+        for login, info in data.get("channels", {}).items()
+    ]
+
+    return {
+        "channels": channels,
+        "vods": data.get("vods", []),
+    }
+
+
+@app.post("/api/twitch/vods/{vod_id}/download")
+async def download_twitch_vod(vod_id: str):
+    twitch_config = get_twitch_config()
+    cli_path = twitch_config.get("cli_path", "TwitchDownloaderCLI") if twitch_config else "TwitchDownloaderCLI"
+
+    downloader = TwitchDownloader(cli_path)
+    if not downloader.is_available():
+        raise HTTPException(
+            status_code=503,
+            detail="TwitchDownloaderCLI not found or not executable"
+        )
+
+    storage = VodStorage(VODS_STORAGE_PATH)
+    vod = storage.get_vod(vod_id)
+    if not vod:
+        raise HTTPException(status_code=404, detail="VOD not found in storage")
+
+    if vod.get("downloaded"):
+        raise HTTPException(status_code=400, detail="VOD already downloaded")
+
+    vods_dir = DATA_DIR / "vods"
+    chats_dir = DATA_DIR / "chats"
+    vods_dir.mkdir(parents=True, exist_ok=True)
+    chats_dir.mkdir(parents=True, exist_ok=True)
+
+    video_path = vods_dir / f"{vod_id}.mp4"
+    chat_path = chats_dir / f"{vod_id}.json"
+
+    import asyncio
+    import queue as sync_queue
+
+    progress_queue: sync_queue.Queue = sync_queue.Queue()
+
+    async def run_downloads():
+        def video_progress(percent: int):
+            progress_queue.put({
+                "stage": "video",
+                "percent": percent,
+                "message": f"Downloading video: {percent}%",
+            })
+
+        def chat_progress(percent: int):
+            progress_queue.put({
+                "stage": "chat",
+                "percent": percent,
+                "message": f"Downloading chat: {percent}%",
+            })
+
+        video_success = await downloader.download_video(vod_id, video_path, video_progress)
+        if not video_success:
+            progress_queue.put({"error": "Video download failed"})
+            return
+
+        chat_success = await downloader.download_chat(vod_id, chat_path, chat_progress)
+        if not chat_success:
+            progress_queue.put({"error": "Chat download failed"})
+            return
+
+        storage.update_vod(vod_id, {
+            "downloaded": True,
+            "video_filename": f"{vod_id}.mp4",
+            "chat_filename": f"{vod_id}.json",
+        })
+
+        progress_queue.put({"complete": True})
+
+    async def event_stream():
+        task = asyncio.create_task(run_downloads())
+
+        while True:
+            try:
+                item = progress_queue.get_nowait()
+                if "error" in item:
+                    yield f"event: error\ndata: {json.dumps({'error': item['error']})}\n\n"
+                    break
+                elif "complete" in item:
+                    yield f"event: complete\ndata: {json.dumps({'success': True})}\n\n"
+                    break
+                else:
+                    yield f"event: progress\ndata: {json.dumps(item)}\n\n"
+            except sync_queue.Empty:
+                if task.done():
+                    break
+                await asyncio.sleep(0.2)
+
+        await task
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        },
     )

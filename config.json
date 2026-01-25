@@ -1,5 +1,9 @@
 {
   "features": {
     "speech_analysis": false
+  },
+  "twitch": {
+    "channels": ["jynxzi", "caseoh_"],
+    "cli_path": "TwitchDownloaderCLI"
   }
 }
