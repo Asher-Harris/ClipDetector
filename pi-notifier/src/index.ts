@@ -45,7 +45,6 @@ async function sendSMS(message: string): Promise<boolean> {
 }
 
 async function main() {
-  console.log("Sending test SMS...");
   const success = await sendSMS("Hello from ClipDetector Pi Notifier! Your setup is working.");
   process.exit(success ? 0 : 1);
 }
