@@ -10,6 +10,8 @@ import type {
   TTSGenerateRequest,
   TTSGenerateResponse,
   AvatarListResponse,
+  VodListResponse,
+  DownloadProgress,
 } from "./types";
 
 const API_BASE = "http://localhost:8000";
@@ -236,4 +238,66 @@ export async function deleteProfile(id: string): Promise<void> {
   return apiRequest(`/api/profiles/${id}`, {
     method: "DELETE",
   });
+}
+
+// Twitch VOD API
+export async function listTwitchVods(): Promise<VodListResponse> {
+  return apiRequest("/api/twitch/vods");
+}
+
+export async function refreshTwitchVods(): Promise<VodListResponse> {
+  return apiRequest("/api/twitch/vods/refresh", {
+    method: "POST",
+  });
+}
+
+export async function downloadVodWithProgress(
+  vodId: string,
+  onProgress: (progress: DownloadProgress) => void
+): Promise<void> {
+  const response = await fetch(`${API_BASE}/api/twitch/vods/${vodId}/download`, {
+    method: "POST",
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw { status: response.status, message: error.detail || "Download failed" } as ApiError;
+  }
+
+  const reader = response.body?.getReader();
+  if (!reader) {
+    throw { status: 500, message: "No response body" } as ApiError;
+  }
+
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+
+    let eventType = "";
+    for (const line of lines) {
+      if (line.startsWith("event: ")) {
+        eventType = line.slice(7);
+      } else if (line.startsWith("data: ")) {
+        const data = JSON.parse(line.slice(6));
+        if (eventType === "progress") {
+          onProgress({
+            stage: data.stage,
+            percent: data.percent,
+            message: data.message,
+          });
+        } else if (eventType === "complete") {
+          return;
+        } else if (eventType === "error") {
+          throw { status: 500, message: data.error } as ApiError;
+        }
+      }
+    }
+  }
 }

@@ -236,3 +236,33 @@ export type TTSGenerateResponse = {
 export type AvatarListResponse = {
   avatars: string[];
 };
+
+// Twitch VOD Types
+export type TwitchVod = {
+  id: string;
+  channel_login: string;
+  title: string;
+  created_at: string;
+  duration: string;
+  thumbnail_url: string;
+  view_count: number;
+  downloaded: boolean;
+  video_filename: string | null;
+  chat_filename: string | null;
+};
+
+export type TwitchChannel = {
+  login: string;
+  display_name: string;
+};
+
+export type VodListResponse = {
+  channels: TwitchChannel[];
+  vods: TwitchVod[];
+};
+
+export type DownloadProgress = {
+  stage: "video" | "chat";
+  percent: number;
+  message: string;
+};

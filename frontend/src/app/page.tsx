@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Button, Card, Select, Spinner } from "@/components/ui";
 import { FileSelector } from "@/components/FileSelector";
 import { ProfileSelector } from "@/components/ProfileSelector";
@@ -170,7 +171,15 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-zinc-950 text-white p-8">
       <main className="max-w-4xl mx-auto">
-        <h1 className="text-4xl font-bold mb-2">ClipDetector</h1>
+        <div className="flex items-center justify-between mb-2">
+          <h1 className="text-4xl font-bold">ClipDetector</h1>
+          <Link
+            href="/vods"
+            className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg transition-colors"
+          >
+            Browse VODs
+          </Link>
+        </div>
         <p className="text-zinc-400 mb-8">
           Analyze Twitch VODs to detect clip-worthy moments
         </p>
