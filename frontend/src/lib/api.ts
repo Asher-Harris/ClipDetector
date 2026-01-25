@@ -48,6 +48,16 @@ export async function checkHealth(): Promise<{ status: string; service: string }
   return apiRequest("/health");
 }
 
+export type AppConfig = {
+  features: {
+    speech_analysis: boolean;
+  };
+};
+
+export async function getConfig(): Promise<AppConfig> {
+  return apiRequest("/api/config");
+}
+
 export async function listFiles(): Promise<FileListResponse> {
   return apiRequest("/api/files");
 }

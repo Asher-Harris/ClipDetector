@@ -34,6 +34,7 @@ cd frontend && npm run dev                  # Frontend :3000
 ## API Endpoints
 
 ```
+GET  /api/config         - Get feature configuration
 POST /api/analyze/full   - Run analysis (video_path, chat_path)
 POST /api/clips/export   - Export clip via FFmpeg (vod_path, start_time, end_time, output_filename)
 POST /api/tts/preview    - Preview TTS audio (text, voice, speed) - returns audio stream
@@ -64,6 +65,20 @@ Avatar requirements (in `data/avatars/{name}/`):
 - Recommended size: 800x800 or 1024x1024
 - Output video uses green background (#00FF00) for chroma key
 
+## Configuration
+
+Edit `config.json` in the project root to toggle features:
+
+```json
+{
+  "features": {
+    "speech_analysis": true
+  }
+}
+```
+
+- `speech_analysis` - Enable/disable speech transcription feature (requires Whisper)
+
 ## Supported Formats
 
 - **Video**: .mp4, .mkv, .webm, .mov
@@ -75,3 +90,7 @@ Avatar requirements (in `data/avatars/{name}/`):
 - **Self-documenting code** - prefer clear variable/function names over comments
 - **No unnecessary comments** - if you need a comment, rename the variable instead
 - **Keep it simple** - avoid over-engineering, only build what's needed
+
+## Dev Environment
+
+- **Do not start dev servers** - the user runs the dev environment separately. Starting another instance causes port conflicts and other issues.

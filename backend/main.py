@@ -39,6 +39,31 @@ from analyzers.lipsync import (
 
 app = FastAPI(title="ClipDetector API", version="0.1.0")
 
+# ============ Config ============
+
+CONFIG_PATH = Path(__file__).parent.parent / "config.json"
+
+DEFAULT_CONFIG = {
+    "features": {
+        "speech_analysis": True
+    }
+}
+
+
+def load_config() -> dict:
+    if CONFIG_PATH.exists():
+        try:
+            with open(CONFIG_PATH) as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError):
+            return DEFAULT_CONFIG
+    return DEFAULT_CONFIG
+
+
+def is_feature_enabled(feature: str) -> bool:
+    config = load_config()
+    return config.get("features", {}).get(feature, True)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000"],
@@ -257,6 +282,11 @@ class ChatAnalysisResponse(BaseModel):
 @app.get("/health")
 async def health_check():
     return {"status": "healthy", "service": "clipdetector-api"}
+
+
+@app.get("/api/config")
+async def get_config():
+    return load_config()
 
 
 # ============ Profile Endpoints ============
@@ -533,6 +563,12 @@ async def analyze_speech_endpoint(request: SpeechAnalysisRequest):
     The file_path should be relative to the /data folder.
     Example: "vods/my_stream.mp4"
     """
+    if not is_feature_enabled("speech_analysis"):
+        raise HTTPException(
+            status_code=403,
+            detail="Speech analysis is disabled in config"
+        )
+
     try:
         video_path = resolve_safe_path(request.file_path, DATA_DIR)
     except ValueError:
@@ -599,6 +635,11 @@ async def analyze_speech_stream(
     - model_size: Whisper model size (tiny, base, small, medium, large)
     - language: Language code (e.g., 'en') or empty for auto-detection
     """
+    if not is_feature_enabled("speech_analysis"):
+        async def error_stream():
+            yield f"event: error\ndata: {json.dumps({'error': 'Speech analysis is disabled in config'})}\n\n"
+        return StreamingResponse(error_stream(), media_type="text/event-stream")
+
     try:
         video_path = resolve_safe_path(file_path, DATA_DIR)
     except ValueError:
@@ -773,6 +814,12 @@ async def analyze_full_endpoint(request: FullAnalysisRequest):
     File paths should be relative to the /data folder.
     Example: video_path="vods/my_stream.mp4", chat_path="chats/my_stream_chat.json"
     """
+    if request.include_speech and not is_feature_enabled("speech_analysis"):
+        raise HTTPException(
+            status_code=403,
+            detail="Speech analysis is disabled in config"
+        )
+
     # Resolve and validate paths
     try:
         video_path = resolve_safe_path(request.video_path, DATA_DIR)
@@ -882,6 +929,11 @@ async def analyze_full_stream(request: FullAnalysisRequest):
     Use this endpoint when speech analysis is enabled to get real-time progress updates.
     Returns the same response as /api/analyze/full but streams progress events.
     """
+    if request.include_speech and not is_feature_enabled("speech_analysis"):
+        async def error_stream():
+            yield f"event: error\ndata: {json.dumps({'error': 'Speech analysis is disabled in config'})}\n\n"
+        return StreamingResponse(error_stream(), media_type="text/event-stream")
+
     import asyncio
     import queue
     import threading

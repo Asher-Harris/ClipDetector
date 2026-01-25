@@ -15,7 +15,9 @@ import {
   createProfile,
   updateProfile,
   deleteProfile,
+  getConfig,
   type AnalysisProgress,
+  type AppConfig,
 } from "@/lib/api";
 import { useToast } from "@/context/ToastContext";
 import { useApp } from "@/context/AppContext";
@@ -41,6 +43,7 @@ export default function Home() {
   const [includeSpeech, setIncludeSpeech] = useState(false);
   const [speechModelSize, setSpeechModelSize] = useState("base");
   const [analysisProgress, setAnalysisProgress] = useState<AnalysisProgress | null>(null);
+  const [config, setConfig] = useState<AppConfig | null>(null);
 
   // Check health and load files/profiles on mount
   useEffect(() => {
@@ -48,13 +51,15 @@ export default function Home() {
       try {
         await checkHealth();
         setIsHealthy(true);
-        const [files, profileList] = await Promise.all([
+        const [files, profileList, appConfig] = await Promise.all([
           listFiles(),
           listProfiles(),
+          getConfig(),
         ]);
         setVodFiles(files.vods);
         setChatFiles(files.chats);
         setProfiles(profileList);
+        setConfig(appConfig);
       } catch (error) {
         setIsHealthy(false);
         addToast("error", "Failed to connect to backend");
@@ -69,6 +74,7 @@ export default function Home() {
     if (!selectedVod || !selectedChat) return;
 
     const profile = profiles.find((p) => p.id === selectedProfileId);
+    const speechEnabled = includeSpeech && config?.features.speech_analysis;
 
     setIsAnalyzing(true);
     setAnalysisProgress(null);
@@ -80,15 +86,15 @@ export default function Home() {
       chat_weight: profile?.chat_weight,
       audio_threshold_multiplier: profile?.audio_threshold_multiplier,
       chat_threshold: profile?.chat_threshold,
-      include_speech: includeSpeech,
-      speech_model_size: includeSpeech ? speechModelSize : undefined,
+      include_speech: speechEnabled,
+      speech_model_size: speechEnabled ? speechModelSize : undefined,
       speech_keyword_weight: profile?.speech_keyword_weight,
       speech_rate_weight: profile?.speech_rate_weight,
     };
 
     try {
       let result;
-      if (includeSpeech) {
+      if (speechEnabled) {
         result = await runFullAnalysisWithProgress(requestParams, setAnalysisProgress);
       } else {
         result = await runFullAnalysis(requestParams);
@@ -232,40 +238,42 @@ export default function Home() {
         </Card>
 
         {/* Speech Analysis */}
-        <Card className="p-6 mb-6">
-          <h2 className="text-lg font-semibold mb-4">Speech Analysis</h2>
-          <div className="flex items-center gap-4">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={includeSpeech}
-                onChange={(e) => setIncludeSpeech(e.target.checked)}
-                disabled={isAnalyzing}
-                className="w-4 h-4 rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500 focus:ring-offset-zinc-900"
-              />
-              <span>Enable speech transcription</span>
-            </label>
+        {config?.features.speech_analysis && (
+          <Card className="p-6 mb-6">
+            <h2 className="text-lg font-semibold mb-4">Speech Analysis</h2>
+            <div className="flex items-center gap-4">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={includeSpeech}
+                  onChange={(e) => setIncludeSpeech(e.target.checked)}
+                  disabled={isAnalyzing}
+                  className="w-4 h-4 rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500 focus:ring-offset-zinc-900"
+                />
+                <span>Enable speech transcription</span>
+              </label>
+              {includeSpeech && (
+                <Select
+                  value={speechModelSize}
+                  onChange={setSpeechModelSize}
+                  options={[
+                    { value: "tiny", label: "Tiny (fastest)" },
+                    { value: "base", label: "Base (recommended)" },
+                    { value: "small", label: "Small (better accuracy)" },
+                    { value: "medium", label: "Medium (slow)" },
+                  ]}
+                  disabled={isAnalyzing}
+                  className="w-48"
+                />
+              )}
+            </div>
             {includeSpeech && (
-              <Select
-                value={speechModelSize}
-                onChange={setSpeechModelSize}
-                options={[
-                  { value: "tiny", label: "Tiny (fastest)" },
-                  { value: "base", label: "Base (recommended)" },
-                  { value: "small", label: "Small (better accuracy)" },
-                  { value: "medium", label: "Medium (slow)" },
-                ]}
-                disabled={isAnalyzing}
-                className="w-48"
-              />
+              <p className="mt-3 text-zinc-400 text-sm">
+                Transcribes audio to detect excitement phrases and fast speech. Adds significant processing time.
+              </p>
             )}
-          </div>
-          {includeSpeech && (
-            <p className="mt-3 text-zinc-400 text-sm">
-              Transcribes audio to detect excitement phrases and fast speech. Adds significant processing time.
-            </p>
-          )}
-        </Card>
+          </Card>
+        )}
 
         {/* Analyze Button */}
         <div className="flex items-center gap-4">
