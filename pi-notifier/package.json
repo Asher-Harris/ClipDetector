@@ -1,9 +1,13 @@
 {
   "name": "pi-notifier",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "type": "module",
   "scripts": {
     "start": "bun --env-file=.env run src/index.ts",
-    "build": "bun build --compile --target=bun-linux-arm64 src/index.ts --outfile=notifier"
+    "test": "bun --env-file=.env run src/index.ts --test",
+    "build:node": "bun build src/index.ts --outfile=notifier.js --target=node"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
   }
 }
