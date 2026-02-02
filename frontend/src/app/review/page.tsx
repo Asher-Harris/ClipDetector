@@ -7,7 +7,7 @@ import { ClipList } from "@/components/ClipList";
 import { VideoPlayer } from "@/components/VideoPlayer";
 import { Timeline } from "@/components/Timeline";
 import { ExportButton } from "@/components/ExportButton";
-import { Button, Card } from "@/components/ui";
+import { AppHeader, Button, Card } from "@/components/ui";
 
 export default function ReviewPage() {
   const router = useRouter();
@@ -32,13 +32,11 @@ export default function ReviewPage() {
   const [zoom, setZoom] = useState(1);
   const [viewportCenter, setViewportCenter] = useState(50);
 
-  // Find selected clip
   const selectedClip = useMemo(
     () => clipsWithStatus.find((c) => c.id === selectedClipId),
     [clipsWithStatus, selectedClipId]
   );
 
-  // Timeline markers
   const timelineMarkers = useMemo(
     () =>
       clipsWithStatus.map((clip) => ({
@@ -104,13 +102,12 @@ export default function ReviewPage() {
     router.push("/");
   };
 
-  // No analysis result - redirect to home
   if (!analysisResult) {
     return (
-      <div className="min-h-screen bg-zinc-950 text-white flex items-center justify-center">
+      <div className="min-h-screen bg-bg-base text-fg-default flex items-center justify-center">
         <Card className="p-8 text-center">
           <h2 className="text-xl font-semibold mb-4">No Analysis Results</h2>
-          <p className="text-zinc-400 mb-6">
+          <p className="text-fg-secondary mb-6">
             Run an analysis first to review clip candidates.
           </p>
           <Button onClick={() => router.push("/")}>Go to Analysis</Button>
@@ -119,39 +116,31 @@ export default function ReviewPage() {
     );
   }
 
-  // Extract VOD filename from path
   const vodFilename = analysisResult.videoPath.split("/").pop() || "vod";
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-white">
-      {/* Header */}
-      <header className="border-b border-zinc-800 px-6 py-4">
-        <div className="max-w-[1800px] mx-auto flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold">Review Clips</h1>
-            <p className="text-zinc-400 text-sm mt-1">
-              {vodFilename} - {clipsWithStatus.length} candidates found
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
+    <div className="min-h-screen bg-bg-base text-fg-default">
+      <AppHeader currentPage="review" showReviewLink />
+
+      <div className="border-b border-border-subtle bg-bg-base">
+        <div className="max-w-[1800px] mx-auto px-6 h-12 flex items-center justify-between">
+          <p className="text-sm text-fg-muted">
+            {vodFilename} · {clipsWithStatus.length} candidates
+          </p>
+          <div className="flex items-center gap-2">
             <ExportButton
               clips={editedClips}
               vodFilename={vodFilename}
               vodPath={analysisResult.videoPath}
             />
-            <Button variant="secondary" onClick={handleNewAnalysis}>
-              New Analysis
-            </Button>
           </div>
         </div>
-      </header>
+      </div>
 
-      {/* Main Content */}
       <div className="max-w-[1800px] mx-auto p-6">
         <div className="grid grid-cols-12 gap-6">
-          {/* Left Panel - Clip List */}
           <div className="col-span-12 lg:col-span-4 xl:col-span-3">
-            <div className="sticky top-6 h-[calc(100vh-120px)] flex flex-col">
+            <div className="sticky top-20 h-[calc(100vh-120px)] flex flex-col">
               <ClipList
                 clips={clipsWithStatus}
                 selectedClipId={selectedClipId}
@@ -161,9 +150,7 @@ export default function ReviewPage() {
             </div>
           </div>
 
-          {/* Right Panel - Video and Controls */}
           <div className="col-span-12 lg:col-span-8 xl:col-span-9 space-y-6">
-            {/* Video Player with integrated trim controls */}
             {selectedClip ? (
               <VideoPlayer
                 vodPath={analysisResult.videoPath}
@@ -182,13 +169,12 @@ export default function ReviewPage() {
               />
             ) : (
               <Card className="p-8 text-center aspect-video flex items-center justify-center">
-                <p className="text-zinc-400">
+                <p className="text-fg-secondary">
                   Select a clip from the list to preview and trim
                 </p>
               </Card>
             )}
 
-            {/* Timeline */}
             <Timeline
               duration={duration}
               currentTime={currentTime}

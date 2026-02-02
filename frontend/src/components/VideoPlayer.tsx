@@ -14,7 +14,7 @@ interface WaveformProps {
 
 const WAVEFORM_SAMPLES = 2000;
 
-const Waveform = memo(function Waveform({ blob, width, height, color = "#3b82f6" }: WaveformProps) {
+const Waveform = memo(function Waveform({ blob, width, height, color = "#9147ff" }: WaveformProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [waveformData, setWaveformData] = useState<number[] | null>(null);
 
@@ -115,22 +115,15 @@ function VideoPlayerInner({
   const lastSeekTime = useRef<number | null>(null);
   const prevExternalTimeRef = useRef<number>(currentTime);
 
-  // Drag state for trim handles
   const [dragState, setDragState] = useState<{
     isDragging: boolean;
     target: "start" | "end" | "playhead" | null;
   }>({ isDragging: false, target: null });
 
-  // Track the current drag position (for snap calculation on release)
   const currentDragPositionRef = useRef<number>(0);
-
-  // Track when drag ended to prevent click events from firing immediately after
   const dragEndedAtRef = useRef<number>(0);
-
-  // Snap to playhead toggle
   const [snapEnabled, setSnapEnabled] = useState(true);
 
-  // Zoom state: controlled or internal
   const [internalZoom, setInternalZoom] = useState(1);
   const [internalViewportCenter, setInternalViewportCenter] = useState(50);
 
@@ -157,18 +150,13 @@ function VideoPlayerInner({
 
   const videoUrl = getVideoUrl(vodPath);
 
-  // Calculate viewport boundaries based on zoom
   const visiblePercent = 100 / zoom;
   const halfVisible = visiblePercent / 2;
-  // Clamp viewport so it doesn't go past edges
   const clampedCenter = Math.max(halfVisible, Math.min(100 - halfVisible, viewportCenter));
   const viewportStart = clampedCenter - halfVisible;
-  const viewportEnd = clampedCenter + halfVisible;
 
-  // Convert time to global percentage (0-100 of full duration)
   const timeToGlobalPercent = (time: number) => (duration > 0 ? (time / duration) * 100 : 0);
 
-  // Fetch video as blob for audio visualization
   useEffect(() => {
     const fetchAudioBlob = async () => {
       try {
@@ -182,7 +170,6 @@ function VideoPlayerInner({
     fetchAudioBlob();
   }, [videoUrl]);
 
-  // Keep viewport centered on playhead when zoomed
   useEffect(() => {
     if (zoom > 1 && duration > 0) {
       const playheadPercent = (internalTime / duration) * 100;
@@ -190,19 +177,16 @@ function VideoPlayerInner({
     }
   }, [zoom, internalTime, duration]);
 
-  // Convert time to viewport percentage (position within visible area)
   const timeToViewportPercent = (time: number) => {
     const globalPercent = timeToGlobalPercent(time);
     return ((globalPercent - viewportStart) / visiblePercent) * 100;
   };
 
-  // Convert viewport percentage to time
   const viewportPercentToTime = (viewportPercent: number) => {
     const globalPercent = viewportStart + (viewportPercent / 100) * visiblePercent;
     return (globalPercent / 100) * duration;
   };
 
-  // Handle metadata loaded
   const handleLoadedMetadata = useCallback(() => {
     const video = videoRef.current;
     if (video) {
@@ -212,7 +196,6 @@ function VideoPlayerInner({
     }
   }, [onDurationChange]);
 
-  // Handle time updates
   const handleTimeUpdate = useCallback(() => {
     const video = videoRef.current;
     if (video && lastSeekTime.current === null) {
@@ -229,7 +212,6 @@ function VideoPlayerInner({
     setIsLoading(false);
   }, []);
 
-  // Seek to time
   const seekTo = useCallback((time: number) => {
     const video = videoRef.current;
     if (video && duration > 0) {
@@ -241,27 +223,21 @@ function VideoPlayerInner({
     }
   }, [duration, onSeek]);
 
-  // Pending seek for when video isn't loaded yet - initialize with currentTime
-  // so we seek to the right position when the video first loads
   const pendingSeekRef = useRef<number | null>(currentTime);
 
-  // Handle external seek requests (when clip is selected)
   useEffect(() => {
     if (currentTime !== prevExternalTimeRef.current) {
       prevExternalTimeRef.current = currentTime;
       if (duration > 0) {
-        // Only seek if significantly different to avoid micro-seeks during playback
         if (Math.abs(internalTime - currentTime) > 1) {
           seekTo(currentTime);
         }
       } else {
-        // Video not loaded yet, store pending seek
         pendingSeekRef.current = currentTime;
       }
     }
   }, [currentTime, duration, internalTime, seekTo]);
 
-  // Apply pending seek once video loads
   useEffect(() => {
     if (duration > 0 && pendingSeekRef.current !== null) {
       seekTo(pendingSeekRef.current);
@@ -269,7 +245,6 @@ function VideoPlayerInner({
     }
   }, [duration, seekTo]);
 
-  // Mouse move handler for dragging
   const handleMouseMove = useCallback((e: MouseEvent) => {
     if (!dragState.isDragging || !progressRef.current || duration === 0) return;
 
@@ -292,16 +267,12 @@ function VideoPlayerInner({
     }
   }, [dragState, duration, trimStart, trimEnd, onTrimStartChange, onTrimEndChange, seekTo, onTimeUpdate, viewportStart, visiblePercent]);
 
-  // Snap threshold as percentage of visible viewport (5% of what's visible on screen)
   const SNAP_THRESHOLD_PERCENT = 2;
 
-  // Mouse up handler - snap to playhead if enabled and close enough
   const handleMouseUp = useCallback(() => {
     if (snapEnabled && dragState.target && dragState.target !== "playhead" && duration > 0) {
       const currentDragPosition = currentDragPositionRef.current;
 
-      // Calculate snap threshold based on visible viewport
-      // visiblePercent is the percentage of total duration visible (100/zoom)
       const visibleDuration = (visiblePercent / 100) * duration;
       const snapThresholdSeconds = (SNAP_THRESHOLD_PERCENT / 100) * visibleDuration;
 
@@ -315,12 +286,10 @@ function VideoPlayerInner({
         }
       }
     }
-    // Record when drag ended to prevent click events from seeking
     dragEndedAtRef.current = Date.now();
     setDragState({ isDragging: false, target: null });
   }, [snapEnabled, dragState.target, trimStart, trimEnd, internalTime, duration, visiblePercent, onTrimStartChange, onTrimEndChange]);
 
-  // Add/remove window event listeners for dragging
   useEffect(() => {
     if (dragState.isDragging) {
       window.addEventListener("mousemove", handleMouseMove);
@@ -332,9 +301,7 @@ function VideoPlayerInner({
     }
   }, [dragState.isDragging, handleMouseMove, handleMouseUp]);
 
-  // Handle click on progress bar (seek)
   const handleProgressClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    // Ignore clicks during drag or immediately after drag ended (prevents accidental seeks)
     if (dragState.isDragging) return;
     if (Date.now() - dragEndedAtRef.current < 100) return;
 
@@ -348,7 +315,6 @@ function VideoPlayerInner({
     onTimeUpdate(time);
   }, [dragState.isDragging, duration, seekTo, onTimeUpdate, viewportStart, visiblePercent]);
 
-  // Start dragging a handle
   const startDrag = (target: "start" | "end" | "playhead") => (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -382,12 +348,11 @@ function VideoPlayerInner({
     } catch (err) {
       const isAbortError = err instanceof Error && err.name === "AbortError";
       if (!isAbortError) {
-        console.error("Playback error:", err);
+        // Playback error
       }
     }
   }, [isPlaying, internalTime]);
 
-  // Auto-pause when crossing trim end (not when already past it)
   const prevTimeRef = useRef(internalTime);
   useEffect(() => {
     const crossedTrimEnd = prevTimeRef.current < trimEnd && internalTime >= trimEnd;
@@ -404,7 +369,6 @@ function VideoPlayerInner({
     onTimeUpdate(newTime);
   }, [duration, internalTime, seekTo, onTimeUpdate]);
 
-  // Jump to trim start/end
   const jumpToStart = useCallback(() => {
     seekTo(trimStart);
     onTimeUpdate(trimStart);
@@ -415,7 +379,6 @@ function VideoPlayerInner({
     onTimeUpdate(Math.max(trimStart, trimEnd - 1));
   }, [trimStart, trimEnd, seekTo, onTimeUpdate]);
 
-  // Zoom controls
   const MAX_ZOOM = 32;
 
   const zoomIn = useCallback(() => {
@@ -431,7 +394,6 @@ function VideoPlayerInner({
     setViewportCenter(50);
   }, []);
 
-  // Global keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
@@ -485,9 +447,8 @@ function VideoPlayerInner({
   const trimEndPercent = timeToViewportPercent(trimEnd);
 
   return (
-    <div className="bg-zinc-900 rounded-lg overflow-hidden">
-      {/* Video */}
-      <div className="relative aspect-video bg-black">
+    <div className="bg-bg-surface border border-border-default rounded-lg overflow-hidden">
+      <div className="relative aspect-video bg-bg-base">
         <video
           ref={videoRef}
           src={videoUrl}
@@ -504,21 +465,18 @@ function VideoPlayerInner({
         />
 
         {isLoading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+          <div className="absolute inset-0 flex items-center justify-center bg-bg-base/50">
             <Spinner size="lg" />
           </div>
         )}
       </div>
 
-      {/* Controls */}
       <div className="p-4">
-        {/* Progress Bar with Trim Handles */}
         <div
           ref={progressRef}
           className="relative h-12 mb-4 cursor-pointer select-none overflow-hidden"
           onClick={handleProgressClick}
         >
-          {/* Audio Waveform */}
           {audioBlob && (
             <div
               className="absolute top-0 bottom-0 flex items-center opacity-40 pointer-events-none"
@@ -531,27 +489,24 @@ function VideoPlayerInner({
                 blob={audioBlob}
                 width={WAVEFORM_SAMPLES}
                 height={48}
-                color="#3b82f6"
+                color="#9147ff"
               />
             </div>
           )}
 
-          {/* Background track */}
-          <div className="absolute top-1/2 -translate-y-1/2 left-0 right-0 h-2 bg-zinc-700/50 rounded-full" />
+          <div className="absolute top-1/2 -translate-y-1/2 left-0 right-0 h-2 bg-bg-overlay rounded-full" />
 
-          {/* Trim region highlight */}
           <div
-            className="absolute top-1/2 -translate-y-1/2 h-10 bg-blue-600/20 rounded"
+            className="absolute top-1/2 -translate-y-1/2 h-10 bg-accent/20 rounded"
             style={{
               left: `${trimStartPercent}%`,
               width: `${Math.min(100, trimEndPercent) - trimStartPercent}%`,
             }}
           />
 
-          {/* Played portion within trim */}
           {internalTime >= trimStart && internalTime <= trimEnd && (
             <div
-              className="absolute top-1/2 -translate-y-1/2 h-10 bg-blue-500/30 rounded-l"
+              className="absolute top-1/2 -translate-y-1/2 h-10 bg-accent/30 rounded-l"
               style={{
                 left: `${trimStartPercent}%`,
                 width: `${Math.max(0, playheadPercent - trimStartPercent)}%`,
@@ -559,65 +514,60 @@ function VideoPlayerInner({
             />
           )}
 
-          {/* Trim Start Handle */}
           <div
             className="absolute top-1/2 -translate-y-1/2 z-20 cursor-ew-resize group"
             style={{ left: `${trimStartPercent}%` }}
             onMouseDown={startDrag("start")}
           >
             <div className="relative -translate-x-1/2">
-              <div className="w-1 h-10 bg-green-500 rounded-full group-hover:bg-green-400 transition-colors" />
-              <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-green-600 text-white text-xs px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+              <div className="w-1 h-10 bg-success rounded-full group-hover:brightness-110 transition-all" />
+              <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-success text-white text-xs px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
                 {formatTime(trimStart)}
               </div>
             </div>
           </div>
 
-          {/* Trim End Handle */}
           <div
             className="absolute top-1/2 -translate-y-1/2 z-20 cursor-ew-resize group"
             style={{ left: `${trimEndPercent}%` }}
             onMouseDown={startDrag("end")}
           >
             <div className="relative -translate-x-1/2">
-              <div className="w-1 h-10 bg-red-500 rounded-full group-hover:bg-red-400 transition-colors" />
-              <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-red-600 text-white text-xs px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+              <div className="w-1 h-10 bg-error rounded-full group-hover:brightness-110 transition-all" />
+              <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-error text-white text-xs px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
                 {formatTime(trimEnd)}
               </div>
             </div>
           </div>
 
-          {/* Playhead */}
           <div
             className="absolute top-1/2 -translate-y-1/2 z-30 cursor-grab active:cursor-grabbing"
             style={{ left: `${playheadPercent}%` }}
             onMouseDown={startDrag("playhead")}
           >
             <div className="relative -translate-x-1/2">
-              <div className="w-3 h-3 bg-white rounded-full shadow-lg ring-2 ring-white/30" />
+              <div className="w-3 h-3 bg-fg-default rounded-full shadow-lg ring-2 ring-fg-default/30" />
             </div>
           </div>
         </div>
 
-        {/* Time display */}
         <div className="flex items-center justify-between mb-4 text-sm">
           <div className="flex items-center gap-4">
-            <span className="text-zinc-400">
-              <span className="text-white font-mono">{formatTime(internalTime)}</span>
+            <span className="text-fg-muted">
+              <span className="text-fg-default font-mono">{formatTime(internalTime)}</span>
               <span className="mx-1">/</span>
               <span className="font-mono">{formatTime(duration)}</span>
             </span>
           </div>
-          <div className="flex items-center gap-2 text-zinc-400">
-            <span className="text-green-400">In:</span>
-            <span className="font-mono text-white">{formatTime(trimStart)}</span>
-            <span className="text-red-400 ml-2">Out:</span>
-            <span className="font-mono text-white">{formatTime(trimEnd)}</span>
-            <span className="text-zinc-500 ml-2">({formatTime(clipDuration)} clip)</span>
+          <div className="flex items-center gap-2 text-fg-muted">
+            <span className="text-success">In:</span>
+            <span className="font-mono text-fg-default">{formatTime(trimStart)}</span>
+            <span className="text-error ml-2">Out:</span>
+            <span className="font-mono text-fg-default">{formatTime(trimEnd)}</span>
+            <span className="text-fg-faint ml-2">({formatTime(clipDuration)} clip)</span>
           </div>
         </div>
 
-        {/* Playback Controls */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="sm" onClick={jumpToStart} title="Jump to clip start [">
@@ -638,13 +588,12 @@ function VideoPlayerInner({
           </div>
 
           <div className="flex items-center gap-4">
-            {/* Snap to Playhead Toggle */}
             <button
               onClick={() => setSnapEnabled(!snapEnabled)}
               className={`p-1.5 rounded transition-colors ${
                 snapEnabled
-                  ? "text-blue-400 bg-blue-500/20 hover:bg-blue-500/30"
-                  : "text-zinc-500 hover:text-zinc-400 hover:bg-zinc-700"
+                  ? "text-accent bg-accent-muted hover:bg-accent/30"
+                  : "text-fg-muted hover:text-fg-secondary hover:bg-bg-hover"
               }`}
               title={`Snap to playhead: ${snapEnabled ? "ON" : "OFF"}`}
             >
@@ -658,25 +607,21 @@ function VideoPlayerInner({
                 strokeLinecap="round"
                 strokeLinejoin="round"
               >
-                {/* U-shaped magnet */}
                 <path
                   d="M5 4v10a7 7 0 0 0 14 0V4"
                   stroke="currentColor"
                   fill="none"
                 />
-                {/* Red pole */}
-                <rect x="3" y="2" width="4" height="6" rx="1" fill={snapEnabled ? "#ef4444" : "currentColor"} stroke="none" />
-                {/* Blue pole */}
-                <rect x="17" y="2" width="4" height="6" rx="1" fill={snapEnabled ? "#3b82f6" : "currentColor"} stroke="none" />
+                <rect x="3" y="2" width="4" height="6" rx="1" fill={snapEnabled ? "#eb0400" : "currentColor"} stroke="none" />
+                <rect x="17" y="2" width="4" height="6" rx="1" fill={snapEnabled ? "#9147ff" : "currentColor"} stroke="none" />
               </svg>
             </button>
 
-            {/* Zoom Controls */}
             <div className="flex items-center gap-2">
               <Button variant="ghost" size="sm" onClick={zoomOut} disabled={zoom <= 1} title="Zoom out (-)">
                 −
               </Button>
-              <span className="text-xs text-zinc-400 font-mono w-10 text-center">
+              <span className="text-xs text-fg-muted font-mono w-10 text-center">
                 {zoom}x
               </span>
               <Button variant="ghost" size="sm" onClick={zoomIn} disabled={zoom >= MAX_ZOOM} title="Zoom in (+)">
@@ -704,19 +649,19 @@ export function VideoPlayer(props: VideoPlayerProps) {
 
   if (!mounted) {
     return (
-      <div className="bg-zinc-900 rounded-lg overflow-hidden">
-        <div className="relative aspect-video flex items-center justify-center bg-black">
+      <div className="bg-bg-surface border border-border-default rounded-lg overflow-hidden">
+        <div className="relative aspect-video flex items-center justify-center bg-bg-base">
           <Spinner size="lg" />
         </div>
         <div className="p-4">
-          <div className="h-8 bg-zinc-800 rounded mb-4" />
-          <div className="h-4 bg-zinc-800 rounded w-1/3 mb-4" />
+          <div className="h-8 bg-bg-overlay rounded mb-4" />
+          <div className="h-4 bg-bg-overlay rounded w-1/3 mb-4" />
           <div className="flex gap-2">
-            <div className="h-8 w-12 bg-zinc-800 rounded" />
-            <div className="h-8 w-12 bg-zinc-800 rounded" />
-            <div className="h-8 w-16 bg-zinc-800 rounded" />
-            <div className="h-8 w-12 bg-zinc-800 rounded" />
-            <div className="h-8 w-12 bg-zinc-800 rounded" />
+            <div className="h-8 w-12 bg-bg-overlay rounded" />
+            <div className="h-8 w-12 bg-bg-overlay rounded" />
+            <div className="h-8 w-16 bg-bg-overlay rounded" />
+            <div className="h-8 w-12 bg-bg-overlay rounded" />
+            <div className="h-8 w-12 bg-bg-overlay rounded" />
           </div>
         </div>
       </div>

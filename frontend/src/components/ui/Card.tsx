@@ -10,8 +10,8 @@ export const Card = forwardRef<HTMLDivElement, CardProps>(
       <div
         ref={ref}
         className={`
-          bg-zinc-900 rounded-lg border transition-colors
-          ${selected ? "border-blue-500" : "border-zinc-800 hover:border-zinc-700"}
+          bg-bg-surface rounded-lg border transition-colors
+          ${selected ? "border-accent" : "border-border-default hover:border-border-strong"}
           ${className}
         `}
         {...props}

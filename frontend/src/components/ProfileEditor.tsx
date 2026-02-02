@@ -63,20 +63,20 @@ export function ProfileEditor({
   );
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <Card className="w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
-        <h2 className="text-xl font-semibold mb-4">{title}</h2>
+    <div className="fixed inset-0 bg-overlay-bg flex items-center justify-center z-50 animate-fade-in">
+      <Card className="w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto animate-scale-in">
+        <h2 className="text-xl font-semibold mb-4 text-fg-default">{title}</h2>
 
         <form onSubmit={handleSubmit}>
           <div className="mb-6">
-            <label className="block text-sm font-medium text-zinc-400 mb-2">
+            <label className="block text-sm font-medium text-fg-secondary mb-2">
               Profile Name
             </label>
             <input
               type="text"
               value={formData.name}
               onChange={(e) => handleChange("name", e.target.value)}
-              className="w-full px-4 py-2 rounded-lg bg-zinc-800 text-white border border-zinc-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-4 py-2 rounded-lg bg-bg-surface text-fg-default border border-border-default focus:outline-none focus:ring-2 focus:ring-focus-ring"
               placeholder="Enter profile name..."
               disabled={profile?.is_default}
               required
@@ -84,15 +84,15 @@ export function ProfileEditor({
           </div>
 
           <div className="mb-6">
-            <h3 className="text-sm font-semibold text-zinc-300 mb-3">
+            <h3 className="text-sm font-semibold text-fg-secondary mb-3">
               Signal Weights
             </h3>
             <div className="space-y-4">
               {weightParams.map(([key, param]) => (
                 <div key={key}>
                   <div className="flex justify-between mb-1">
-                    <label className="text-sm text-zinc-400">{param.label}</label>
-                    <span className="text-sm text-zinc-500">
+                    <label className="text-sm text-fg-secondary">{param.label}</label>
+                    <span className="text-sm text-fg-muted">
                       {formData[key as keyof ProfileCreateRequest]}
                     </span>
                   </div>
@@ -108,24 +108,24 @@ export function ProfileEditor({
                         parseFloat(e.target.value)
                       )
                     }
-                    className="w-full accent-blue-500"
+                    className="w-full accent-accent"
                   />
-                  <p className="text-xs text-zinc-500 mt-1">{param.description}</p>
+                  <p className="text-xs text-fg-muted mt-1">{param.description}</p>
                 </div>
               ))}
             </div>
           </div>
 
           <div className="mb-6">
-            <h3 className="text-sm font-semibold text-zinc-300 mb-3">
+            <h3 className="text-sm font-semibold text-fg-secondary mb-3">
               Detector Thresholds
             </h3>
             <div className="space-y-4">
               {thresholdParams.map(([key, param]) => (
                 <div key={key}>
                   <div className="flex justify-between mb-1">
-                    <label className="text-sm text-zinc-400">{param.label}</label>
-                    <span className="text-sm text-zinc-500">
+                    <label className="text-sm text-fg-secondary">{param.label}</label>
+                    <span className="text-sm text-fg-muted">
                       {formData[key as keyof ProfileCreateRequest]}
                     </span>
                   </div>
@@ -141,9 +141,9 @@ export function ProfileEditor({
                         parseFloat(e.target.value)
                       )
                     }
-                    className="w-full accent-blue-500"
+                    className="w-full accent-accent"
                   />
-                  <p className="text-xs text-zinc-500 mt-1">{param.description}</p>
+                  <p className="text-xs text-fg-muted mt-1">{param.description}</p>
                 </div>
               ))}
             </div>

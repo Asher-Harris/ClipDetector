@@ -127,11 +127,11 @@ export function TTSControls({ settings, onChange, disabled }: TTSControlsProps) 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium text-zinc-300">Intro Voice-over</h3>
+        <h3 className="text-sm font-medium text-fg-secondary">Intro Voice-over</h3>
         {hasText && (
           <button
             onClick={handleClear}
-            className="text-xs text-zinc-500 hover:text-zinc-300"
+            className="text-xs text-fg-muted hover:text-fg-secondary"
             disabled={disabled}
           >
             Clear
@@ -144,16 +144,16 @@ export function TTSControls({ settings, onChange, disabled }: TTSControlsProps) 
         onChange={handleTextChange}
         placeholder="Enter intro text (e.g., 'Check out this amazing play!')"
         disabled={disabled}
-        className="w-full px-3 py-2 rounded-lg bg-zinc-800 text-white border border-zinc-700
-                   focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
-                   disabled:opacity-50 resize-none text-sm placeholder-zinc-500"
+        className="w-full px-3 py-2 rounded-lg bg-bg-surface text-fg-default border border-border-default
+                   focus:outline-none focus:ring-2 focus:ring-focus-ring focus:border-transparent
+                   disabled:opacity-50 resize-none text-sm placeholder-fg-muted"
         rows={2}
         maxLength={500}
       />
 
       <div className="flex gap-3">
         <div className="flex-1">
-          <label className="block text-xs text-zinc-500 mb-1">Voice</label>
+          <label className="block text-xs text-fg-muted mb-1">Voice</label>
           <Select
             options={TTS_VOICES}
             value={currentSettings.voice}
@@ -163,7 +163,7 @@ export function TTSControls({ settings, onChange, disabled }: TTSControlsProps) 
         </div>
         {avatars.length > 0 && (
           <div className="flex-1">
-            <label className="block text-xs text-zinc-500 mb-1">Avatar</label>
+            <label className="block text-xs text-fg-muted mb-1">Avatar</label>
             <Select
               options={[
                 { value: "", label: "None (audio only)" },
@@ -179,7 +179,7 @@ export function TTSControls({ settings, onChange, disabled }: TTSControlsProps) 
           </div>
         )}
         <div className="w-32">
-          <label className="block text-xs text-zinc-500 mb-1">
+          <label className="block text-xs text-fg-muted mb-1">
             Speed: {currentSettings.speed.toFixed(1)}x
           </label>
           <input
@@ -190,7 +190,7 @@ export function TTSControls({ settings, onChange, disabled }: TTSControlsProps) 
             value={currentSettings.speed}
             onChange={handleSpeedChange}
             disabled={disabled}
-            className="w-full h-10 accent-blue-500 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full h-10 accent-accent cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           />
         </div>
       </div>
@@ -217,10 +217,10 @@ export function TTSControls({ settings, onChange, disabled }: TTSControlsProps) 
         )}
       </div>
 
-      {error && <p className="text-xs text-red-400">{error}</p>}
+      {error && <p className="text-xs text-error">{error}</p>}
 
       {hasText && (
-        <p className="text-xs text-zinc-500">
+        <p className="text-xs text-fg-muted">
           {currentSettings.text.length}/500 characters
         </p>
       )}

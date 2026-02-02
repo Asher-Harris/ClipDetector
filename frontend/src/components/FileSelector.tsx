@@ -34,7 +34,7 @@ export function FileSelector({
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
       <div>
-        <label className="block text-sm font-medium text-zinc-400 mb-2">
+        <label className="block text-sm font-medium text-fg-secondary mb-2">
           VOD File
         </label>
         <Select
@@ -45,13 +45,13 @@ export function FileSelector({
           disabled={disabled || vodFiles.length === 0}
         />
         {vodFiles.length === 0 && (
-          <p className="mt-1 text-xs text-zinc-500">
+          <p className="mt-1 text-xs text-fg-muted">
             No VOD files found in data/vods/
           </p>
         )}
       </div>
       <div>
-        <label className="block text-sm font-medium text-zinc-400 mb-2">
+        <label className="block text-sm font-medium text-fg-secondary mb-2">
           Chat Log
         </label>
         <Select
@@ -62,7 +62,7 @@ export function FileSelector({
           disabled={disabled || chatFiles.length === 0}
         />
         {chatFiles.length === 0 && (
-          <p className="mt-1 text-xs text-zinc-500">
+          <p className="mt-1 text-xs text-fg-muted">
             No chat files found in data/chats/
           </p>
         )}

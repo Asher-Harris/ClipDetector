@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import type { TwitchVod } from "@/lib/types";
 import { deleteVod, type ApiError } from "@/lib/api";
-import { Card, Button, ConfirmDialog } from "@/components/ui";
+import { ConfirmDialog } from "@/components/ui";
 import { useDownload } from "@/context/DownloadContext";
 
 type VodCardProps = {
@@ -27,10 +27,17 @@ function formatDuration(duration: string): string {
 
 function formatDate(dateStr: string): string {
   const date = new Date(dateStr);
+  const now = new Date();
+  const diffTime = now.getTime() - date.getTime();
+  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+  if (diffDays === 0) return "Today";
+  if (diffDays === 1) return "Yesterday";
+  if (diffDays < 7) return `${diffDays}d ago`;
+
   return date.toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
-    year: "numeric",
   });
 }
 
@@ -39,24 +46,39 @@ function formatViewCount(count: number): string {
     return `${(count / 1_000_000).toFixed(1)}M`;
   }
   if (count >= 1_000) {
-    return `${(count / 1_000).toFixed(1)}K`;
+    return `${(count / 1_000).toFixed(0)}K`;
   }
   return count.toString();
 }
 
+function DownloadIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M8 1v9m0 0L5 7m3 3 3-3M3 14h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  );
+}
+
+function CheckIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M3.5 8.5 6 11l6.5-6.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  );
+}
+
 function TrashIcon({ className }: { className?: string }) {
   return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 20 20"
-      fill="currentColor"
-      className={className}
-    >
-      <path
-        fillRule="evenodd"
-        d="M8.75 1A2.75 2.75 0 006 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 10.23 1.482l.149-.022.841 10.518A2.75 2.75 0 007.596 19h4.807a2.75 2.75 0 002.742-2.53l.841-10.519.149.023a.75.75 0 00.23-1.482A41.03 41.03 0 0014 4.193V3.75A2.75 2.75 0 0011.25 1h-2.5zM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4zM8.58 7.72a.75.75 0 00-1.5.06l.3 7.5a.75.75 0 101.5-.06l-.3-7.5zm4.34.06a.75.75 0 10-1.5-.06l-.3 7.5a.75.75 0 101.5.06l.3-7.5z"
-        clipRule="evenodd"
-      />
+    <svg className={className} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M2 4h12M5.333 4V2.667a1.333 1.333 0 0 1 1.334-1.334h2.666a1.333 1.333 0 0 1 1.334 1.334V4m2 0v9.333a1.333 1.333 0 0 1-1.334 1.334H4.667a1.333 1.333 0 0 1-1.334-1.334V4h9.334z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  );
+}
+
+function XIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
     </svg>
   );
 }
@@ -99,105 +121,106 @@ export function VodCard({ vod, onDownloadComplete, onDelete }: VodCardProps) {
   };
 
   const displayError = error || deleteError;
+  const totalProgress = progress ? Math.round((progress.videoPercent + progress.chatPercent) / 2) : 0;
 
   return (
-    <Card className="overflow-hidden">
-      <div className="relative">
+    <div className="group bg-bg-surface rounded-lg border border-border-default hover:border-border-strong transition-colors overflow-hidden">
+      <div className="relative aspect-video bg-bg-overlay">
         <img
           src={vod.thumbnail_url}
-          alt={vod.title}
-          className="w-full aspect-video object-cover"
+          alt=""
+          className="w-full h-full object-cover"
         />
-        <div className="absolute bottom-2 right-2 bg-black/80 px-2 py-1 rounded text-xs font-medium">
-          {formatDuration(vod.duration)}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+        <div className="absolute bottom-2 left-2 right-2 flex items-end justify-between">
+          <span className="text-[11px] font-medium text-white/90 bg-black/50 px-1.5 py-0.5 rounded">
+            {formatDuration(vod.duration)}
+          </span>
+          {vod.downloaded && (
+            <span className="flex items-center gap-1 text-[11px] font-medium text-success bg-black/50 px-1.5 py-0.5 rounded">
+              <CheckIcon className="w-3 h-3" />
+              Ready
+            </span>
+          )}
         </div>
-        {vod.downloaded && (
-          <div className="absolute top-2 left-2 bg-green-600 px-2 py-1 rounded text-xs font-medium">
-            Downloaded
-          </div>
-        )}
       </div>
 
-      <div className="p-4">
-        <div className="text-xs text-zinc-400 mb-1">
-          {vod.channel_login}
-        </div>
-        <h3 className="font-medium text-sm line-clamp-2 mb-2" title={vod.title}>
+      <div className="p-3">
+        <h3 className="text-[13px] font-medium text-fg-default line-clamp-2 leading-snug mb-2" title={vod.title}>
           {vod.title}
         </h3>
 
-        <div className="flex items-center gap-3 text-xs text-zinc-400 mb-3">
-          <span>{formatViewCount(vod.view_count)} views</span>
+        <div className="flex items-center gap-2 text-[11px] text-fg-muted mb-3">
+          <span className="font-medium text-fg-secondary">{vod.channel_login}</span>
+          <span className="text-fg-faint">·</span>
+          <span className="tabular-nums">{formatViewCount(vod.view_count)} views</span>
+          <span className="text-fg-faint">·</span>
           <span>{formatDate(vod.created_at)}</span>
         </div>
 
         {displayError && (
-          <p className="text-red-400 text-xs mb-2">{displayError}</p>
+          <p className="text-[11px] text-error mb-2 bg-error-muted px-2 py-1 rounded">{displayError}</p>
         )}
 
         {isDownloading && progress ? (
-          <div className="space-y-3">
+          <div className="space-y-2">
             {progress.stage === "queued" ? (
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-amber-400">{progress.message}</span>
+              <div className="text-[11px] text-warning bg-warning-muted px-2 py-1.5 rounded">
+                {progress.message}
               </div>
             ) : (
-              <>
-                <div className="space-y-1">
-                  <div className="flex justify-between text-xs">
-                    <span className="text-zinc-400">Video</span>
-                    <span className="text-zinc-400">{progress.videoPercent}%</span>
-                  </div>
-                  <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-blue-500 transition-all duration-300"
-                      style={{ width: `${progress.videoPercent}%` }}
-                    />
-                  </div>
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="text-fg-muted">Downloading</span>
+                  <span className="text-fg-secondary font-medium tabular-nums">{totalProgress}%</span>
                 </div>
-
-                <div className="space-y-1">
-                  <div className="flex justify-between text-xs">
-                    <span className="text-zinc-400">Chat</span>
-                    <span className="text-zinc-400">{progress.chatPercent}%</span>
-                  </div>
-                  <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-purple-500 transition-all duration-300"
-                      style={{ width: `${progress.chatPercent}%` }}
-                    />
-                  </div>
+                <div className="h-1 bg-bg-overlay rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-accent transition-all duration-300 ease-out"
+                    style={{ width: `${totalProgress}%` }}
+                  />
                 </div>
-              </>
+                <div className="flex items-center gap-3 text-[10px] text-fg-muted">
+                  <span className="flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-accent" />
+                    Video {progress.videoPercent}%
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-info" />
+                    Chat {progress.chatPercent}%
+                  </span>
+                </div>
+              </div>
             )}
-
-            <Button
-              variant="secondary"
-              size="sm"
+            <button
               onClick={handleCancel}
-              className="w-full"
+              className="w-full h-7 flex items-center justify-center gap-1.5 text-[12px] font-medium text-fg-secondary hover:text-fg-default bg-bg-overlay hover:bg-bg-hover rounded-md transition-colors"
             >
+              <XIcon className="w-3.5 h-3.5" />
               Cancel
-            </Button>
+            </button>
           </div>
         ) : vod.downloaded ? (
           <div className="flex gap-2">
-            <Button variant="secondary" size="sm" disabled className="flex-1">
+            <div className="flex-1 h-7 flex items-center justify-center gap-1.5 text-[12px] font-medium text-fg-muted bg-bg-overlay rounded-md">
+              <CheckIcon className="w-3.5 h-3.5" />
               Downloaded
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
+            </div>
+            <button
               onClick={() => setShowDeleteConfirm(true)}
-              className="px-3 text-red-400 hover:text-red-300 hover:bg-red-500/10"
+              className="w-7 h-7 flex items-center justify-center text-fg-muted hover:text-error hover:bg-error-muted rounded-md transition-colors"
             >
-              <TrashIcon className="w-4 h-4" />
-            </Button>
+              <TrashIcon className="w-3.5 h-3.5" />
+            </button>
           </div>
         ) : (
-          <Button size="sm" onClick={handleDownload} className="w-full">
+          <button
+            onClick={handleDownload}
+            className="w-full h-7 flex items-center justify-center gap-1.5 text-[12px] font-medium text-white bg-accent hover:bg-accent-hover rounded-md transition-colors"
+          >
+            <DownloadIcon className="w-3.5 h-3.5" />
             Download
-          </Button>
+          </button>
         )}
       </div>
 
@@ -210,6 +233,6 @@ export function VodCard({ vod, onDownloadComplete, onDelete }: VodCardProps) {
         onCancel={() => setShowDeleteConfirm(false)}
         isLoading={isDeleting}
       />
-    </Card>
+    </div>
   );
 }

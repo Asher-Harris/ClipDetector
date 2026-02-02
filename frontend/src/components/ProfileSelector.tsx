@@ -33,7 +33,7 @@ export function ProfileSelector({
   return (
     <div className="flex items-end gap-2">
       <div className="flex-1">
-        <label className="block text-sm font-medium text-zinc-400 mb-2">
+        <label className="block text-sm font-medium text-fg-secondary mb-2">
           Analysis Profile
         </label>
         <Select

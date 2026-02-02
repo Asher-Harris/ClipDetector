@@ -19,10 +19,8 @@ export function ClipList({
 }: ClipListProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  // Sort by score descending
   const sortedClips = [...clips].sort((a, b) => b.score - a.score);
 
-  // Scroll selected clip into view when selection changes
   useEffect(() => {
     if (!selectedClipId || !scrollContainerRef.current) return;
 
@@ -44,16 +42,14 @@ export function ClipList({
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="pb-4 border-b border-zinc-800 mb-4">
+      <div className="pb-4 border-b border-border-default mb-4">
         <h2 className="text-lg font-semibold mb-2">Clip Candidates</h2>
-        <div className="flex gap-4 text-sm text-zinc-400">
+        <div className="flex gap-4 text-sm text-fg-muted">
           <span>{clips.length} total</span>
-          <span className="text-green-400">{editedCount} edited</span>
+          <span className="text-success">{editedCount} edited</span>
         </div>
       </div>
 
-      {/* Clip List */}
       <div ref={scrollContainerRef} className="flex-1 overflow-y-auto space-y-3 pr-2">
         {sortedClips.map((clip) => (
           <div key={clip.id} data-clip-id={clip.id}>

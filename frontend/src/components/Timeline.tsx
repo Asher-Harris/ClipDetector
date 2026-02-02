@@ -38,23 +38,19 @@ export function Timeline({
 
   if (duration === 0) return null;
 
-  // Calculate viewport boundaries based on zoom (same logic as VideoPlayer)
   const visiblePercent = 100 / zoom;
   const halfVisible = visiblePercent / 2;
   const clampedCenter = Math.max(halfVisible, Math.min(100 - halfVisible, viewportCenter));
   const viewportStart = clampedCenter - halfVisible;
   const viewportEnd = clampedCenter + halfVisible;
 
-  // Convert time to global percentage (0-100 of full duration)
   const timeToGlobalPercent = (time: number) => (duration > 0 ? (time / duration) * 100 : 0);
 
-  // Convert time to viewport percentage (position within visible area)
   const timeToPercent = (time: number) => {
     const globalPercent = timeToGlobalPercent(time);
     return ((globalPercent - viewportStart) / visiblePercent) * 100;
   };
 
-  // Convert viewport percentage to time
   const viewportPercentToTime = (viewportPercent: number) => {
     const globalPercent = viewportStart + (viewportPercent / 100) * visiblePercent;
     return (globalPercent / 100) * duration;
@@ -69,10 +65,8 @@ export function Timeline({
     onSeek(Math.max(0, Math.min(time, duration)));
   };
 
-  // Calculate max score for scaling
   const maxScore = Math.max(...markers.map((m) => m.score), 1);
 
-  // Generate time labels for visible range
   const labelCount = 5;
   const visibleStartTime = (viewportStart / 100) * duration;
   const visibleEndTime = (viewportEnd / 100) * duration;
@@ -83,19 +77,17 @@ export function Timeline({
   });
 
   return (
-    <div className="bg-zinc-900 rounded-lg p-4">
-      <h3 className="text-sm font-medium text-zinc-300 mb-3">VOD Timeline</h3>
+    <div className="bg-bg-surface border border-border-default rounded-lg p-4">
+      <h3 className="text-sm font-medium text-fg-secondary mb-3">VOD Timeline</h3>
 
-      {/* Timeline Track */}
       <div
         ref={containerRef}
-        className="relative h-8 bg-zinc-800 rounded cursor-pointer mb-2 overflow-hidden"
+        className="relative h-8 bg-bg-overlay rounded cursor-pointer mb-2 overflow-hidden"
         onClick={handleClick}
       >
-        {/* Selected clip region */}
         {trimStart !== undefined && trimEnd !== undefined && (
           <div
-            className="absolute top-0 bottom-0 bg-blue-600/30"
+            className="absolute top-0 bottom-0 bg-accent/30"
             style={{
               left: `${timeToPercent(trimStart)}%`,
               width: `${timeToPercent(Math.min(trimEnd, duration)) - timeToPercent(trimStart)}%`,
@@ -103,19 +95,18 @@ export function Timeline({
           />
         )}
 
-        {/* Markers */}
         {markers.map((marker) => {
           const isSelected = marker.id === selectedMarkerId;
           const intensity = marker.score / maxScore;
-          const size = 8 + intensity * 8; // 8-16px
+          const size = 8 + intensity * 8;
 
           return (
             <button
               key={marker.id}
               className={`absolute top-1/2 -translate-y-1/2 rounded-full transition-all ${
                 isSelected
-                  ? "bg-blue-500 ring-2 ring-blue-300"
-                  : "bg-zinc-400 hover:bg-zinc-300"
+                  ? "bg-accent ring-2 ring-accent/50"
+                  : "bg-fg-muted hover:bg-fg-secondary"
               }`}
               style={{
                 left: `${timeToPercent(marker.time)}%`,
@@ -133,17 +124,15 @@ export function Timeline({
           );
         })}
 
-        {/* Playhead */}
         <div
-          className="absolute top-0 bottom-0 w-0.5 bg-white z-10 pointer-events-none"
+          className="absolute top-0 bottom-0 w-0.5 bg-fg-default z-10 pointer-events-none"
           style={{ left: `${timeToPercent(currentTime)}%` }}
         >
-          <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent border-t-white" />
+          <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent border-t-fg-default" />
         </div>
       </div>
 
-      {/* Time Labels */}
-      <div className="flex justify-between text-xs text-zinc-500">
+      <div className="flex justify-between text-xs text-fg-muted">
         {timeLabels.map(({ time, label }) => (
           <span key={time} className="font-mono">
             {label}

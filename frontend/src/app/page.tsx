@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { Button, Card, Select, Spinner } from "@/components/ui";
+import { AppHeader, Button, Card, Select, Spinner } from "@/components/ui";
 import { FileSelector } from "@/components/FileSelector";
 import { ProfileSelector } from "@/components/ProfileSelector";
 import { ProfileEditor } from "@/components/ProfileEditor";
@@ -46,7 +45,6 @@ export default function Home() {
   const [analysisProgress, setAnalysisProgress] = useState<AnalysisProgress | null>(null);
   const [config, setConfig] = useState<AppConfig | null>(null);
 
-  // Check health and load files/profiles on mount
   useEffect(() => {
     async function init() {
       try {
@@ -169,44 +167,35 @@ export default function Home() {
   const canAnalyze = selectedVod && selectedChat && !isAnalyzing;
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-white p-8">
-      <main className="max-w-4xl mx-auto">
-        <div className="flex items-center justify-between mb-2">
-          <h1 className="text-4xl font-bold">ClipDetector</h1>
-          <Link
-            href="/vods"
-            className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg transition-colors"
-          >
-            Browse VODs
-          </Link>
-        </div>
-        <p className="text-zinc-400 mb-8">
+    <div className="min-h-screen bg-bg-base text-fg-default">
+      <AppHeader currentPage="analyze" showReviewLink={!!analysisResult} />
+
+      <main className="max-w-4xl mx-auto px-6 py-8">
+        <p className="text-fg-secondary mb-8">
           Analyze Twitch VODs to detect clip-worthy moments
         </p>
 
-        {/* Backend Status */}
         <Card className="p-4 mb-6">
           <div className="flex items-center gap-2">
             {isLoading ? (
               <>
-                <span className="w-3 h-3 rounded-full bg-yellow-500 animate-pulse" />
-                <span className="text-yellow-400">Connecting to backend...</span>
+                <span className="w-3 h-3 rounded-full bg-warning animate-pulse" />
+                <span className="text-warning">Connecting to backend...</span>
               </>
             ) : isHealthy ? (
               <>
-                <span className="w-3 h-3 rounded-full bg-green-500" />
-                <span className="text-green-400">Backend connected</span>
+                <span className="w-3 h-3 rounded-full bg-success" />
+                <span className="text-success">Backend connected</span>
               </>
             ) : (
               <>
-                <span className="w-3 h-3 rounded-full bg-red-500" />
-                <span className="text-red-400">Backend not available</span>
+                <span className="w-3 h-3 rounded-full bg-error" />
+                <span className="text-error">Backend not available</span>
               </>
             )}
           </div>
         </Card>
 
-        {/* File Selection */}
         <Card className="p-6 mb-6">
           <h2 className="text-lg font-semibold mb-4">Select Files</h2>
           {isLoading ? (
@@ -226,7 +215,6 @@ export default function Home() {
           )}
         </Card>
 
-        {/* Profile Selection */}
         <Card className="p-6 mb-6">
           <h2 className="text-lg font-semibold mb-4">Analysis Profile</h2>
           {isLoading ? (
@@ -246,7 +234,6 @@ export default function Home() {
           )}
         </Card>
 
-        {/* Speech Analysis */}
         {config?.features.speech_analysis && (
           <Card className="p-6 mb-6">
             <h2 className="text-lg font-semibold mb-4">Speech Analysis</h2>
@@ -257,7 +244,7 @@ export default function Home() {
                   checked={includeSpeech}
                   onChange={(e) => setIncludeSpeech(e.target.checked)}
                   disabled={isAnalyzing}
-                  className="w-4 h-4 rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500 focus:ring-offset-zinc-900"
+                  className="w-4 h-4 rounded border-border-default bg-bg-surface text-accent focus:ring-accent focus:ring-offset-bg-base"
                 />
                 <span>Enable speech transcription</span>
               </label>
@@ -277,14 +264,13 @@ export default function Home() {
               )}
             </div>
             {includeSpeech && (
-              <p className="mt-3 text-zinc-400 text-sm">
+              <p className="mt-3 text-fg-secondary text-sm">
                 Transcribes audio to detect excitement phrases and fast speech. Adds significant processing time.
               </p>
             )}
           </Card>
         )}
 
-        {/* Analyze Button */}
         <div className="flex items-center gap-4">
           <Button
             size="lg"
@@ -294,12 +280,6 @@ export default function Home() {
           >
             {isAnalyzing ? "Analyzing..." : "Run Analysis"}
           </Button>
-
-          {analysisResult && (
-            <Button variant="secondary" size="lg" onClick={() => router.push("/review")}>
-              View Previous Results
-            </Button>
-          )}
         </div>
 
         {isAnalyzing && (
@@ -307,18 +287,18 @@ export default function Home() {
             {analysisProgress ? (
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
-                  <span className="text-zinc-300">{analysisProgress.message}</span>
-                  <span className="text-zinc-400">{analysisProgress.percent}%</span>
+                  <span className="text-fg-secondary">{analysisProgress.message}</span>
+                  <span className="text-fg-muted">{analysisProgress.percent}%</span>
                 </div>
-                <div className="w-full h-2 bg-zinc-800 rounded-full overflow-hidden">
+                <div className="w-full h-2 bg-bg-surface rounded-full overflow-hidden">
                   <div
-                    className="h-full bg-blue-500 transition-all duration-300"
+                    className="h-full bg-accent transition-all duration-300"
                     style={{ width: `${analysisProgress.percent}%` }}
                   />
                 </div>
               </div>
             ) : (
-              <p className="text-zinc-400 text-sm">
+              <p className="text-fg-secondary text-sm">
                 {includeSpeech
                   ? "Starting speech transcription..."
                   : "This may take a few minutes depending on the VOD length..."}
@@ -327,18 +307,17 @@ export default function Home() {
           </div>
         )}
 
-        {/* Instructions */}
         {!isLoading && vodFiles.length === 0 && chatFiles.length === 0 && (
           <Card className="p-6 mt-8">
             <h3 className="font-semibold mb-2">Getting Started</h3>
-            <ol className="list-decimal list-inside space-y-2 text-zinc-400 text-sm">
+            <ol className="list-decimal list-inside space-y-2 text-fg-secondary text-sm">
               <li>
                 Place VOD files in{" "}
-                <code className="bg-zinc-800 px-2 py-1 rounded">data/vods/</code>
+                <code className="bg-bg-overlay px-2 py-1 rounded font-mono text-fg-default">data/vods/</code>
               </li>
               <li>
                 Place chat JSON files in{" "}
-                <code className="bg-zinc-800 px-2 py-1 rounded">data/chats/</code>
+                <code className="bg-bg-overlay px-2 py-1 rounded font-mono text-fg-default">data/chats/</code>
               </li>
               <li>Refresh this page to see available files</li>
             </ol>

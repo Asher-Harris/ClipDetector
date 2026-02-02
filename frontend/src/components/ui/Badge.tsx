@@ -7,7 +7,7 @@ interface BadgeProps {
 
 export function Badge({ signal, count }: BadgeProps) {
   const label = SIGNAL_LABELS[signal] || signal;
-  const colorClass = SIGNAL_COLORS[signal] || "bg-zinc-600";
+  const colorClass = SIGNAL_COLORS[signal] || "bg-fg-muted";
 
   return (
     <span

@@ -40,16 +40,16 @@ export function ConfirmDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-overlay-bg animate-fade-in"
       onClick={(e) => {
         if (e.target === e.currentTarget && !isLoading) {
           onCancel();
         }
       }}
     >
-      <Card className="w-full max-w-sm mx-4 p-6">
-        <h2 className="text-lg font-semibold mb-2">{title}</h2>
-        <p className="text-zinc-400 text-sm mb-6">{message}</p>
+      <Card className="w-full max-w-sm mx-4 p-6 animate-scale-in">
+        <h2 className="text-lg font-semibold text-fg-default mb-2">{title}</h2>
+        <p className="text-fg-secondary text-sm mb-6">{message}</p>
         <div className="flex gap-3 justify-end">
           <Button
             variant="secondary"

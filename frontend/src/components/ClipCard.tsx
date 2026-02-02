@@ -24,32 +24,30 @@ export function ClipCard({
     <Card
       selected={isSelected}
       className={`p-4 cursor-pointer transition-all relative ${
-        isModified ? "border-green-600/50 bg-green-950/20" : ""
+        isModified ? "border-success/50 bg-success-muted" : ""
       }`}
       onClick={onSelect}
     >
-      {/* Header: Time Range and Score */}
       <div className="flex items-start justify-between mb-3">
         <div>
-          <div className="font-mono text-sm text-white">
+          <div className="font-mono text-sm text-fg-default">
             {formatTimeRange(clip.trimStart, clip.trimEnd)}
             {isModified && (
-              <span className="ml-2 text-xs text-yellow-500">(edited)</span>
+              <span className="ml-2 text-xs text-warning">(edited)</span>
             )}
           </div>
-          <div className="text-xs text-zinc-500 mt-0.5">
+          <div className="text-xs text-fg-muted mt-0.5">
             {formatDuration(duration)} clip
           </div>
         </div>
         <div className="text-right">
-          <div className="text-lg font-semibold text-blue-400">
+          <div className="text-lg font-semibold text-accent">
             {clip.score.toFixed(2)}
           </div>
-          <div className="text-xs text-zinc-500">score</div>
+          <div className="text-xs text-fg-muted">score</div>
         </div>
       </div>
 
-      {/* Signal Badges */}
       <div className="flex flex-wrap gap-1.5">
         {Object.entries(
           clip.signals.reduce<Record<string, number>>((acc, signal) => {
@@ -61,10 +59,9 @@ export function ClipCard({
         ))}
       </div>
 
-      {/* Reset Icon */}
       {isModified && (
         <button
-          className="absolute bottom-3 right-3 p-1.5 text-zinc-400 hover:text-white hover:bg-zinc-700 rounded transition-colors"
+          className="absolute bottom-3 right-3 p-1.5 text-fg-muted hover:text-fg-default hover:bg-bg-hover rounded transition-colors"
           onClick={(e) => {
             e.stopPropagation();
             onReset();

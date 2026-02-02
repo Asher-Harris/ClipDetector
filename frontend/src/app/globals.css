@@ -1,24 +1,243 @@
 @import "tailwindcss";
 
+/* ============================================
+   DESIGN TOKENS - Twitch-inspired theme
+   ============================================ */
+
 :root {
-  --background: #0a0a0a;
-  --foreground: #ededed;
+  /* Font families */
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+
+  /* Spacing scale (4px base) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* Border radius */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+
+  /* Transitions */
+  --transition-fast: 150ms cubic-bezier(0.25, 1, 0.5, 1);
+  --transition-normal: 200ms cubic-bezier(0.25, 1, 0.5, 1);
+
+  /* Shadow values - used in both themes */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 2px 4px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
+/* ============================================
+   DARK THEME (default) - Twitch-inspired
+   ============================================ */
+:root,
+[data-theme="dark"] {
+  /* Background layers */
+  --bg-base: #0e0e10;
+  --bg-elevated: #18181b;
+  --bg-surface: #1f1f23;
+  --bg-overlay: #26262c;
+  --bg-hover: #323238;
+  --bg-active: #3d3d44;
+
+  /* Foreground / text */
+  --fg-default: #efeff1;
+  --fg-secondary: #adadb8;
+  --fg-muted: #848494;
+  --fg-faint: #53535f;
+
+  /* Borders */
+  --border-default: #323238;
+  --border-subtle: #26262c;
+  --border-strong: #3d3d44;
+
+  /* Brand / Accent (Twitch purple) */
+  --accent: #9147ff;
+  --accent-hover: #772ce8;
+  --accent-active: #5c16c5;
+  --accent-muted: rgba(145, 71, 255, 0.15);
+  --accent-fg: #ffffff;
+
+  /* Semantic colors */
+  --success: #00c853;
+  --success-muted: rgba(0, 200, 83, 0.15);
+  --warning: #ffb300;
+  --warning-muted: rgba(255, 179, 0, 0.15);
+  --error: #eb0400;
+  --error-hover: #cc0000;
+  --error-muted: rgba(235, 4, 0, 0.15);
+  --info: #1e90ff;
+  --info-muted: rgba(30, 144, 255, 0.15);
+
+  /* Interactive states */
+  --focus-ring: var(--accent);
+  --focus-ring-offset: var(--bg-base);
+
+  /* Overlay */
+  --overlay-bg: rgba(0, 0, 0, 0.7);
+
+  /* Scrollbar */
+  --scrollbar-track: var(--bg-surface);
+  --scrollbar-thumb: var(--border-strong);
+  --scrollbar-thumb-hover: var(--fg-faint);
+
+  color-scheme: dark;
+}
+
+/* ============================================
+   LIGHT THEME
+   ============================================ */
+[data-theme="light"] {
+  /* Background layers */
+  --bg-base: #f7f7f8;
+  --bg-elevated: #ffffff;
+  --bg-surface: #ffffff;
+  --bg-overlay: #f0f0f2;
+  --bg-hover: #e8e8eb;
+  --bg-active: #dedee3;
+
+  /* Foreground / text */
+  --fg-default: #0e0e10;
+  --fg-secondary: #53535f;
+  --fg-muted: #848494;
+  --fg-faint: #adadb8;
+
+  /* Borders */
+  --border-default: #dedee3;
+  --border-subtle: #e8e8eb;
+  --border-strong: #c8c8d0;
+
+  /* Brand / Accent (Twitch purple) */
+  --accent: #9147ff;
+  --accent-hover: #772ce8;
+  --accent-active: #5c16c5;
+  --accent-muted: rgba(145, 71, 255, 0.1);
+  --accent-fg: #ffffff;
+
+  /* Semantic colors */
+  --success: #00a341;
+  --success-muted: rgba(0, 163, 65, 0.1);
+  --warning: #cc8c00;
+  --warning-muted: rgba(204, 140, 0, 0.1);
+  --error: #d60000;
+  --error-hover: #b30000;
+  --error-muted: rgba(214, 0, 0, 0.1);
+  --info: #0066cc;
+  --info-muted: rgba(0, 102, 204, 0.1);
+
+  /* Interactive states */
+  --focus-ring: var(--accent);
+  --focus-ring-offset: var(--bg-base);
+
+  /* Overlay */
+  --overlay-bg: rgba(0, 0, 0, 0.5);
+
+  /* Scrollbar */
+  --scrollbar-track: var(--bg-overlay);
+  --scrollbar-thumb: var(--border-strong);
+  --scrollbar-thumb-hover: var(--fg-muted);
+
+  color-scheme: light;
+}
+
+/* ============================================
+   Tailwind v4 theme config
+   ============================================ */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  /* Map CSS variables to Tailwind */
+  --color-bg-base: var(--bg-base);
+  --color-bg-elevated: var(--bg-elevated);
+  --color-bg-surface: var(--bg-surface);
+  --color-bg-overlay: var(--bg-overlay);
+  --color-bg-hover: var(--bg-hover);
+  --color-bg-active: var(--bg-active);
+
+  --color-fg-default: var(--fg-default);
+  --color-fg-secondary: var(--fg-secondary);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-faint: var(--fg-faint);
+
+  --color-border-default: var(--border-default);
+  --color-border-subtle: var(--border-subtle);
+  --color-border-strong: var(--border-strong);
+
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-active: var(--accent-active);
+  --color-accent-muted: var(--accent-muted);
+  --color-accent-fg: var(--accent-fg);
+
+  --color-success: var(--success);
+  --color-success-muted: var(--success-muted);
+  --color-warning: var(--warning);
+  --color-warning-muted: var(--warning-muted);
+  --color-error: var(--error);
+  --color-error-hover: var(--error-hover);
+  --color-error-muted: var(--error-muted);
+  --color-info: var(--info);
+  --color-info-muted: var(--info-muted);
+
+  --color-overlay-bg: var(--overlay-bg);
+  --color-focus-ring: var(--focus-ring);
+
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
+/* ============================================
+   BASE STYLES
+   ============================================ */
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  background: var(--bg-base);
+  color: var(--fg-default);
+  font-family: var(--font-sans), system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* Toast slide-in animation */
+/* Focus styles */
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* Selection */
+::selection {
+  background: var(--accent-muted);
+  color: var(--fg-default);
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+/* ============================================
+   ANIMATIONS
+   ============================================ */
 @keyframes slide-in {
   from {
     transform: translateX(100%);
@@ -30,6 +249,34 @@ body {
   }
 }
 
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 .animate-slide-in {
-  animation: slide-in 0.2s ease-out;
+  animation: slide-in var(--transition-normal);
+}
+
+.animate-fade-in {
+  animation: fade-in var(--transition-normal);
+}
+
+.animate-scale-in {
+  animation: scale-in var(--transition-normal);
 }

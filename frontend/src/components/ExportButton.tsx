@@ -50,7 +50,6 @@ export function ExportButton({ clips, vodFilename, vodPath }: ExportButtonProps)
 
     const exportResults: ExportResult[] = [];
 
-    // Export clips in parallel (batches of 3 to avoid overwhelming the system)
     const batchSize = 3;
     for (let i = 0; i < clipsToExport.length; i += batchSize) {
       const batch = clipsToExport.slice(i, i + batchSize);
@@ -114,7 +113,6 @@ export function ExportButton({ clips, vodFilename, vodPath }: ExportButtonProps)
   const videoCount = results.filter((r) => r.introVideoPath).length;
   const errorCount = results.filter((r) => r.status === "error").length;
 
-  // Auto-dismiss results after 4 seconds
   useEffect(() => {
     if (results.length > 0 && !isExporting) {
       const timer = setTimeout(() => setResults([]), 4000);
@@ -142,14 +140,14 @@ export function ExportButton({ clips, vodFilename, vodPath }: ExportButtonProps)
       {results.length > 0 && !isExporting && (
         <p className="text-sm">
           {successCount > 0 && (
-            <span className="text-green-500">
+            <span className="text-success">
               ✓ {successCount} clip{successCount !== 1 ? "s" : ""} exported
               {introCount > 0 && ` (${introCount} with intro${videoCount > 0 ? `, ${videoCount} with video` : ""})`}
             </span>
           )}
           {successCount > 0 && errorCount > 0 && " · "}
           {errorCount > 0 && (
-            <span className="text-red-500">
+            <span className="text-error">
               ✗ {errorCount} failed
             </span>
           )}

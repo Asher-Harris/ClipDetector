@@ -27,9 +27,9 @@ export function useToast() {
 }
 
 const toastStyles: Record<ToastType, string> = {
-  success: "bg-green-600",
-  error: "bg-red-600",
-  info: "bg-blue-600",
+  success: "bg-success",
+  error: "bg-error",
+  info: "bg-info",
 };
 
 function ToastContainer({ toasts, onRemove }: { toasts: Toast[]; onRemove: (id: string) => void }) {
@@ -64,7 +64,6 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     const id = crypto.randomUUID();
     setToasts((prev) => [...prev, { id, type, message }]);
 
-    // Auto-remove after 5 seconds
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
     }, 5000);
