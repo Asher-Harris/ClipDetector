@@ -268,7 +268,18 @@ export type VodListResponse = {
 };
 
 export type DownloadProgress = {
-  stage: "video" | "chat";
+  stage: "queued" | "video" | "chat";
   percent: number;
   message: string;
+};
+
+export type ActiveDownloadInfo = {
+  stage: "queued" | "video" | "chat";
+  videoPercent: number;
+  chatPercent: number;
+  message: string;
+};
+
+export type ActiveDownloadsResponse = {
+  downloads: Record<string, ActiveDownloadInfo>;
 };

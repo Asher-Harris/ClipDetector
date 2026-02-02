@@ -12,6 +12,7 @@ import type {
   AvatarListResponse,
   VodListResponse,
   DownloadProgress,
+  ActiveDownloadsResponse,
 } from "./types";
 
 const API_BASE = "http://localhost:8000";
@@ -253,10 +254,12 @@ export async function refreshTwitchVods(): Promise<VodListResponse> {
 
 export async function downloadVodWithProgress(
   vodId: string,
-  onProgress: (progress: DownloadProgress) => void
+  onProgress: (progress: DownloadProgress) => void,
+  signal?: AbortSignal
 ): Promise<void> {
   const response = await fetch(`${API_BASE}/api/twitch/vods/${vodId}/download`, {
     method: "POST",
+    signal,
   });
 
   if (!response.ok) {
@@ -272,32 +275,52 @@ export async function downloadVodWithProgress(
   const decoder = new TextDecoder();
   let buffer = "";
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
 
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() || "";
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
 
-    let eventType = "";
-    for (const line of lines) {
-      if (line.startsWith("event: ")) {
-        eventType = line.slice(7);
-      } else if (line.startsWith("data: ")) {
-        const data = JSON.parse(line.slice(6));
-        if (eventType === "progress") {
-          onProgress({
-            stage: data.stage,
-            percent: data.percent,
-            message: data.message,
-          });
-        } else if (eventType === "complete") {
-          return;
-        } else if (eventType === "error") {
-          throw { status: 500, message: data.error } as ApiError;
+      let eventType = "";
+      for (const line of lines) {
+        if (line.startsWith("event: ")) {
+          eventType = line.slice(7);
+        } else if (line.startsWith("data: ")) {
+          const data = JSON.parse(line.slice(6));
+          if (eventType === "progress") {
+            onProgress({
+              stage: data.stage,
+              percent: data.percent,
+              message: data.message,
+            });
+          } else if (eventType === "complete") {
+            return;
+          } else if (eventType === "error") {
+            throw { status: 500, message: data.error } as ApiError;
+          }
         }
       }
     }
+  } finally {
+    reader.releaseLock();
   }
+}
+
+export async function cancelVodDownload(vodId: string): Promise<void> {
+  await apiRequest(`/api/twitch/vods/${vodId}/cancel`, {
+    method: "POST",
+  });
+}
+
+export async function deleteVod(vodId: string): Promise<void> {
+  await apiRequest(`/api/twitch/vods/${vodId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function getActiveDownloads(): Promise<ActiveDownloadsResponse> {
+  return apiRequest("/api/twitch/downloads/active");
 }

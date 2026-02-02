@@ -1,7 +1,9 @@
+import asyncio
 import json
 import os
 import re
 import subprocess
+from asyncio import Semaphore
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
@@ -40,6 +42,11 @@ from services.twitch import TwitchClient, VodStorage
 from services.downloader import TwitchDownloader
 
 app = FastAPI(title="ClipDetector API", version="0.1.0")
+
+# ============ Download Management ============
+# {vod_id: {"downloader": ..., "video_path": ..., "chat_path": ..., "stage": ..., "video_percent": ..., "chat_percent": ..., "message": ...}}
+active_downloads: dict[str, dict] = {}
+download_semaphore = Semaphore(1)
 
 # ============ Config ============
 
@@ -1531,6 +1538,14 @@ def get_twitch_config() -> dict | None:
     }
 
 
+def check_vod_downloaded(vod: dict, vods_dir: Path, chats_dir: Path) -> bool:
+    video_filename = vod.get("video_filename")
+    chat_filename = vod.get("chat_filename")
+    if not video_filename or not chat_filename:
+        return False
+    return (vods_dir / video_filename).exists() and (chats_dir / chat_filename).exists()
+
+
 @app.get("/api/twitch/vods")
 async def list_twitch_vods():
     storage = VodStorage(VODS_STORAGE_PATH)
@@ -1541,9 +1556,15 @@ async def list_twitch_vods():
         for login, info in data.get("channels", {}).items()
     ]
 
+    vods_dir = DATA_DIR / "vods"
+    chats_dir = DATA_DIR / "chats"
+    vods = data.get("vods", [])
+    for vod in vods:
+        vod["downloaded"] = check_vod_downloaded(vod, vods_dir, chats_dir)
+
     return {
         "channels": channels,
-        "vods": data.get("vods", []),
+        "vods": vods,
     }
 
 
@@ -1588,15 +1609,38 @@ async def refresh_twitch_vods():
         for login, info in data.get("channels", {}).items()
     ]
 
+    vods_dir = DATA_DIR / "vods"
+    chats_dir = DATA_DIR / "chats"
+    vods = data.get("vods", [])
+    for vod in vods:
+        vod["downloaded"] = check_vod_downloaded(vod, vods_dir, chats_dir)
+
     return {
         "channels": channels,
-        "vods": data.get("vods", []),
+        "vods": vods,
         "errors": errors,
     }
 
 
+def generate_unique_filename(directory: Path, channel_login: str, created_at: str, extension: str) -> str:
+    date_str = created_at[:10]
+    base_name = f"{channel_login}_{date_str}"
+
+    if not (directory / f"{base_name}{extension}").exists():
+        return f"{base_name}{extension}"
+
+    counter = 2
+    while (directory / f"{base_name}_{counter}{extension}").exists():
+        counter += 1
+
+    return f"{base_name}_{counter}{extension}"
+
+
 @app.post("/api/twitch/vods/{vod_id}/download")
 async def download_twitch_vod(vod_id: str):
+    if vod_id in active_downloads:
+        raise HTTPException(status_code=409, detail="Download already in progress for this VOD")
+
     twitch_config = get_twitch_config()
     cli_path = twitch_config.get("cli_path", "TwitchDownloaderCLI") if twitch_config else "TwitchDownloaderCLI"
 
@@ -1612,54 +1656,135 @@ async def download_twitch_vod(vod_id: str):
     if not vod:
         raise HTTPException(status_code=404, detail="VOD not found in storage")
 
-    if vod.get("downloaded"):
-        raise HTTPException(status_code=400, detail="VOD already downloaded")
-
     vods_dir = DATA_DIR / "vods"
     chats_dir = DATA_DIR / "chats"
     vods_dir.mkdir(parents=True, exist_ok=True)
     chats_dir.mkdir(parents=True, exist_ok=True)
 
-    video_path = vods_dir / f"{vod_id}.mp4"
-    chat_path = chats_dir / f"{vod_id}.json"
+    if check_vod_downloaded(vod, vods_dir, chats_dir):
+        raise HTTPException(status_code=400, detail="VOD already downloaded")
 
-    import asyncio
+    channel_login = vod.get("channel_login", "unknown")
+    created_at = vod.get("created_at", "")
+
+    video_filename = generate_unique_filename(vods_dir, channel_login, created_at, ".mp4")
+    chat_filename = generate_unique_filename(chats_dir, channel_login, created_at, ".json")
+
+    video_path = vods_dir / video_filename
+    chat_path = chats_dir / chat_filename
+
     import queue as sync_queue
 
     progress_queue: sync_queue.Queue = sync_queue.Queue()
+    cancelled = {"value": False}
 
     async def run_downloads():
-        def video_progress(percent: int):
+        active_downloads[vod_id] = {
+            "downloader": downloader,
+            "video_path": video_path,
+            "chat_path": chat_path,
+            "stage": "queued",
+            "video_percent": 0,
+            "chat_percent": 0,
+            "message": "Waiting in queue...",
+        }
+        try:
             progress_queue.put({
-                "stage": "video",
-                "percent": percent,
-                "message": f"Downloading video: {percent}%",
+                "stage": "queued",
+                "percent": 0,
+                "message": "Waiting in queue...",
             })
 
-        def chat_progress(percent: int):
-            progress_queue.put({
-                "stage": "chat",
-                "percent": percent,
-                "message": f"Downloading chat: {percent}%",
-            })
+            async with download_semaphore:
+                if cancelled["value"]:
+                    progress_queue.put({"error": "Download cancelled"})
+                    return
 
-        video_success = await downloader.download_video(vod_id, video_path, video_progress)
-        if not video_success:
-            progress_queue.put({"error": "Video download failed"})
-            return
+                def video_progress(percent: int):
+                    if vod_id in active_downloads:
+                        active_downloads[vod_id]["stage"] = "video"
+                        active_downloads[vod_id]["video_percent"] = percent
+                        active_downloads[vod_id]["message"] = f"Downloading video: {percent}%"
+                    progress_queue.put({
+                        "stage": "video",
+                        "percent": percent,
+                        "message": f"Downloading video: {percent}%",
+                    })
 
-        chat_success = await downloader.download_chat(vod_id, chat_path, chat_progress)
-        if not chat_success:
-            progress_queue.put({"error": "Chat download failed"})
-            return
+                def chat_progress(percent: int):
+                    if vod_id in active_downloads:
+                        active_downloads[vod_id]["stage"] = "chat"
+                        active_downloads[vod_id]["chat_percent"] = percent
+                        active_downloads[vod_id]["message"] = f"Downloading chat: {percent}%"
+                    progress_queue.put({
+                        "stage": "chat",
+                        "percent": percent,
+                        "message": f"Downloading chat: {percent}%",
+                    })
 
-        storage.update_vod(vod_id, {
-            "downloaded": True,
-            "video_filename": f"{vod_id}.mp4",
-            "chat_filename": f"{vod_id}.json",
-        })
+                video_progress(0)
+                chat_progress(0)
 
-        progress_queue.put({"complete": True})
+                video_task = asyncio.create_task(
+                    downloader.download_video(vod_id, video_path, video_progress)
+                )
+                chat_task = asyncio.create_task(
+                    downloader.download_chat(vod_id, chat_path, chat_progress)
+                )
+
+                results = await asyncio.gather(video_task, chat_task, return_exceptions=True)
+
+                if cancelled["value"]:
+                    if video_path.exists():
+                        video_path.unlink()
+                    if chat_path.exists():
+                        chat_path.unlink()
+                    progress_queue.put({"error": "Download cancelled"})
+                    return
+
+                video_result, chat_result = results
+
+                if isinstance(video_result, Exception):
+                    progress_queue.put({"error": f"Video download failed: {video_result}"})
+                    if video_path.exists():
+                        video_path.unlink()
+                    if chat_path.exists():
+                        chat_path.unlink()
+                    return
+
+                if isinstance(chat_result, Exception):
+                    progress_queue.put({"error": f"Chat download failed: {chat_result}"})
+                    if video_path.exists():
+                        video_path.unlink()
+                    if chat_path.exists():
+                        chat_path.unlink()
+                    return
+
+                if not video_result:
+                    progress_queue.put({"error": "Video download failed"})
+                    if video_path.exists():
+                        video_path.unlink()
+                    if chat_path.exists():
+                        chat_path.unlink()
+                    return
+
+                if not chat_result:
+                    progress_queue.put({"error": "Chat download failed"})
+                    if video_path.exists():
+                        video_path.unlink()
+                    if chat_path.exists():
+                        chat_path.unlink()
+                    return
+
+                storage.update_vod(vod_id, {
+                    "downloaded": True,
+                    "video_filename": video_filename,
+                    "chat_filename": chat_filename,
+                })
+
+                progress_queue.put({"complete": True})
+        finally:
+            active_downloads.pop(vod_id, None)
 
     async def event_stream():
         task = asyncio.create_task(run_downloads())
@@ -1690,3 +1815,72 @@ async def download_twitch_vod(vod_id: str):
             "Connection": "keep-alive",
         },
     )
+
+
+@app.post("/api/twitch/vods/{vod_id}/cancel")
+async def cancel_twitch_vod_download(vod_id: str):
+    if vod_id not in active_downloads:
+        raise HTTPException(status_code=404, detail="No active download for this VOD")
+
+    download_info = active_downloads[vod_id]
+    download_info["downloader"].cancel()
+
+    video_path = download_info.get("video_path")
+    chat_path = download_info.get("chat_path")
+    if video_path and video_path.exists():
+        video_path.unlink()
+    if chat_path and chat_path.exists():
+        chat_path.unlink()
+
+    active_downloads.pop(vod_id, None)
+    return {"success": True, "message": "Download cancelled"}
+
+
+@app.get("/api/twitch/downloads/active")
+async def get_active_downloads():
+    """Return status of all active/queued downloads."""
+    return {
+        "downloads": {
+            vod_id: {
+                "stage": info.get("stage", "queued"),
+                "videoPercent": info.get("video_percent", 0),
+                "chatPercent": info.get("chat_percent", 0),
+                "message": info.get("message", ""),
+            }
+            for vod_id, info in active_downloads.items()
+        }
+    }
+
+
+@app.delete("/api/twitch/vods/{vod_id}")
+async def delete_twitch_vod(vod_id: str):
+    storage = VodStorage(VODS_STORAGE_PATH)
+    data = storage.load()
+    vods = data.get("vods", [])
+
+    vod = next((v for v in vods if v.get("id") == vod_id), None)
+    if not vod:
+        raise HTTPException(status_code=404, detail="VOD not found")
+
+    vods_dir = DATA_DIR / "vods"
+    chats_dir = DATA_DIR / "chats"
+
+    video_filename = vod.get("video_filename")
+    chat_filename = vod.get("chat_filename")
+
+    if video_filename:
+        video_path = vods_dir / video_filename
+        if video_path.exists():
+            video_path.unlink()
+
+    if chat_filename:
+        chat_path = chats_dir / chat_filename
+        if chat_path.exists():
+            chat_path.unlink()
+
+    storage.update_vod(vod_id, {
+        "video_filename": None,
+        "chat_filename": None,
+    })
+
+    return {"success": True, "message": "VOD deleted"}

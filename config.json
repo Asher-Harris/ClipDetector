@@ -4,6 +4,6 @@
   },
   "twitch": {
     "channels": ["jynxzi", "caseoh_"],
-    "cli_path": "TwitchDownloaderCLI"
+    "cli_path": "/usr/local/bin/TwitchDownloaderCLI"
   }
 }
