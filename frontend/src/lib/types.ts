@@ -1,3 +1,9 @@
+// UI Types
+export type SelectOption = {
+  value: string;
+  label: string;
+};
+
 // API Response Types (matching backend models)
 export type ClipCandidateResult = {
   timestamp: number;

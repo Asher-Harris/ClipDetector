@@ -32,6 +32,8 @@ export function ProfileEditor({
         chat_weight: profile.chat_weight,
         audio_threshold_multiplier: profile.audio_threshold_multiplier,
         chat_threshold: profile.chat_threshold,
+        speech_keyword_weight: profile.speech_keyword_weight ?? DEFAULT_PROFILE_VALUES.speech_keyword_weight,
+        speech_rate_weight: profile.speech_rate_weight ?? DEFAULT_PROFILE_VALUES.speech_rate_weight,
       });
     } else {
       setFormData(DEFAULT_PROFILE_VALUES);

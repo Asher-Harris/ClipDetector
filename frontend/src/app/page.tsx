@@ -2,9 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AppHeader, Button, Card, Select, Spinner } from "@/components/ui";
-import { FileSelector } from "@/components/FileSelector";
-import { ProfileSelector } from "@/components/ProfileSelector";
+import { AppHeader, Button, Select, Spinner } from "@/components/ui";
 import { ProfileEditor } from "@/components/ProfileEditor";
 import {
   listFiles,
@@ -21,7 +19,7 @@ import {
 } from "@/lib/api";
 import { useToast } from "@/context/ToastContext";
 import { useApp } from "@/context/AppContext";
-import type { Profile, ProfileCreateRequest } from "@/lib/types";
+import type { Profile, ProfileCreateRequest, SelectOption } from "@/lib/types";
 
 export default function Home() {
   const router = useRouter();
@@ -59,7 +57,7 @@ export default function Home() {
         setChatFiles(files.chats);
         setProfiles(profileList);
         setConfig(appConfig);
-      } catch (error) {
+      } catch {
         setIsHealthy(false);
         addToast("error", "Failed to connect to backend");
       } finally {
@@ -164,165 +162,271 @@ export default function Home() {
     }
   };
 
-  const canAnalyze = selectedVod && selectedChat && !isAnalyzing;
+  const canAnalyze = selectedVod && selectedChat && !isAnalyzing && isHealthy;
+  const selectedProfile = profiles.find((p) => p.id === selectedProfileId);
+
+  const vodOptions: SelectOption[] = vodFiles.map((file) => ({
+    value: file,
+    label: file,
+  }));
+
+  const chatOptions: SelectOption[] = chatFiles.map((file) => ({
+    value: file,
+    label: file,
+  }));
+
+  const profileOptions: SelectOption[] = profiles.map((p) => ({
+    value: p.id,
+    label: p.name + (p.is_default ? " (Default)" : ""),
+  }));
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-bg-base text-fg-default">
+        <AppHeader currentPage="analyze" showReviewLink={!!analysisResult} />
+        <main className="max-w-2xl mx-auto px-6 py-16">
+          <div className="flex flex-col items-center justify-center gap-4">
+            <Spinner size="lg" />
+            <p className="text-fg-muted text-sm">Loading...</p>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  if (!isHealthy) {
+    return (
+      <div className="min-h-screen bg-bg-base text-fg-default">
+        <AppHeader currentPage="analyze" showReviewLink={!!analysisResult} />
+        <main className="max-w-2xl mx-auto px-6 py-16">
+          <div className="text-center">
+            <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-error-muted mb-4">
+              <span className="w-3 h-3 rounded-full bg-error" />
+            </div>
+            <h2 className="text-lg font-medium mb-2">Backend Unavailable</h2>
+            <p className="text-fg-secondary text-sm mb-6">
+              Make sure the backend server is running on port 8000.
+            </p>
+            <Button variant="secondary" onClick={() => window.location.reload()}>
+              Retry Connection
+            </Button>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  const hasNoFiles = vodFiles.length === 0 && chatFiles.length === 0;
+
+  if (hasNoFiles) {
+    return (
+      <div className="min-h-screen bg-bg-base text-fg-default">
+        <AppHeader currentPage="analyze" showReviewLink={!!analysisResult} />
+        <main className="max-w-2xl mx-auto px-6 py-16">
+          <div className="text-center mb-8">
+            <h2 className="text-lg font-medium mb-2">No Files Found</h2>
+            <p className="text-fg-secondary text-sm">
+              Add VOD and chat files to get started.
+            </p>
+          </div>
+          <div className="bg-bg-surface border border-border-default rounded-lg p-6">
+            <ol className="space-y-4 text-sm">
+              <li className="flex gap-3">
+                <span className="flex-shrink-0 w-5 h-5 rounded-full bg-bg-overlay text-fg-muted text-xs flex items-center justify-center font-medium">1</span>
+                <div>
+                  <p className="text-fg-default">Place VOD files in</p>
+                  <code className="text-fg-muted font-mono text-xs">data/vods/</code>
+                </div>
+              </li>
+              <li className="flex gap-3">
+                <span className="flex-shrink-0 w-5 h-5 rounded-full bg-bg-overlay text-fg-muted text-xs flex items-center justify-center font-medium">2</span>
+                <div>
+                  <p className="text-fg-default">Place chat JSON files in</p>
+                  <code className="text-fg-muted font-mono text-xs">data/chats/</code>
+                </div>
+              </li>
+              <li className="flex gap-3">
+                <span className="flex-shrink-0 w-5 h-5 rounded-full bg-bg-overlay text-fg-muted text-xs flex items-center justify-center font-medium">3</span>
+                <p className="text-fg-default">Refresh this page</p>
+              </li>
+            </ol>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-bg-base text-fg-default">
       <AppHeader currentPage="analyze" showReviewLink={!!analysisResult} />
 
-      <main className="max-w-4xl mx-auto px-6 py-8">
-        <p className="text-fg-secondary mb-8">
-          Analyze Twitch VODs to detect clip-worthy moments
-        </p>
-
-        <Card className="p-4 mb-6">
-          <div className="flex items-center gap-2">
-            {isLoading ? (
-              <>
-                <span className="w-3 h-3 rounded-full bg-warning animate-pulse" />
-                <span className="text-warning">Connecting to backend...</span>
-              </>
-            ) : isHealthy ? (
-              <>
-                <span className="w-3 h-3 rounded-full bg-success" />
-                <span className="text-success">Backend connected</span>
-              </>
-            ) : (
-              <>
-                <span className="w-3 h-3 rounded-full bg-error" />
-                <span className="text-error">Backend not available</span>
-              </>
-            )}
-          </div>
-        </Card>
-
-        <Card className="p-6 mb-6">
-          <h2 className="text-lg font-semibold mb-4">Select Files</h2>
-          {isLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <Spinner size="lg" />
-            </div>
-          ) : (
-            <FileSelector
-              vodFiles={vodFiles}
-              chatFiles={chatFiles}
-              selectedVod={selectedVod}
-              selectedChat={selectedChat}
-              onVodChange={setSelectedVod}
-              onChatChange={setSelectedChat}
-              disabled={isAnalyzing}
-            />
-          )}
-        </Card>
-
-        <Card className="p-6 mb-6">
-          <h2 className="text-lg font-semibold mb-4">Analysis Profile</h2>
-          {isLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <Spinner size="lg" />
-            </div>
-          ) : (
-            <ProfileSelector
-              profiles={profiles}
-              selectedProfileId={selectedProfileId}
-              onSelect={setSelectedProfileId}
-              onEdit={handleEditProfile}
-              onCreate={handleCreateProfile}
-              onDelete={handleDeleteProfile}
-              disabled={isAnalyzing}
-            />
-          )}
-        </Card>
-
-        {config?.features.speech_analysis && (
-          <Card className="p-6 mb-6">
-            <h2 className="text-lg font-semibold mb-4">Speech Analysis</h2>
-            <div className="flex items-center gap-4">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={includeSpeech}
-                  onChange={(e) => setIncludeSpeech(e.target.checked)}
-                  disabled={isAnalyzing}
-                  className="w-4 h-4 rounded border-border-default bg-bg-surface text-accent focus:ring-accent focus:ring-offset-bg-base"
-                />
-                <span>Enable speech transcription</span>
-              </label>
-              {includeSpeech && (
-                <Select
-                  value={speechModelSize}
-                  onChange={setSpeechModelSize}
-                  options={[
-                    { value: "tiny", label: "Tiny (fastest)" },
-                    { value: "base", label: "Base (recommended)" },
-                    { value: "small", label: "Small (better accuracy)" },
-                    { value: "medium", label: "Medium (slow)" },
-                  ]}
-                  disabled={isAnalyzing}
-                  className="w-48"
-                />
-              )}
-            </div>
-            {includeSpeech && (
-              <p className="mt-3 text-fg-secondary text-sm">
-                Transcribes audio to detect excitement phrases and fast speech. Adds significant processing time.
-              </p>
-            )}
-          </Card>
-        )}
-
-        <div className="flex items-center gap-4">
-          <Button
-            size="lg"
-            onClick={handleAnalyze}
-            disabled={!canAnalyze}
-            loading={isAnalyzing}
-          >
-            {isAnalyzing ? "Analyzing..." : "Run Analysis"}
-          </Button>
+      <main className="max-w-2xl mx-auto px-6 py-8">
+        <div className="mb-8">
+          <h1 className="text-xl font-semibold mb-1">New Analysis</h1>
+          <p className="text-fg-muted text-sm">
+            Select files to analyze for clip-worthy moments
+          </p>
         </div>
 
-        {isAnalyzing && (
-          <div className="mt-4">
-            {analysisProgress ? (
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-fg-secondary">{analysisProgress.message}</span>
-                  <span className="text-fg-muted">{analysisProgress.percent}%</span>
+        <div className="bg-bg-surface border border-border-default rounded-lg divide-y divide-border-default">
+          {/* File Selection */}
+          <div className="p-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-fg-muted mb-1.5 uppercase tracking-wide">
+                  VOD File
+                </label>
+                <Select
+                  options={vodOptions}
+                  value={selectedVod}
+                  onChange={setSelectedVod}
+                  placeholder="Select VOD..."
+                  disabled={isAnalyzing || vodFiles.length === 0}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-fg-muted mb-1.5 uppercase tracking-wide">
+                  Chat Log
+                </label>
+                <Select
+                  options={chatOptions}
+                  value={selectedChat}
+                  onChange={setSelectedChat}
+                  placeholder="Select chat..."
+                  disabled={isAnalyzing || chatFiles.length === 0}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Profile Selection */}
+          <div className="p-4">
+            <div className="flex items-end gap-3">
+              <div className="flex-1">
+                <label className="block text-xs font-medium text-fg-muted mb-1.5 uppercase tracking-wide">
+                  Analysis Profile
+                </label>
+                <Select
+                  options={profileOptions}
+                  value={selectedProfileId}
+                  onChange={setSelectedProfileId}
+                  disabled={isAnalyzing || profiles.length === 0}
+                  placeholder="Select profile..."
+                />
+              </div>
+              <button
+                onClick={() => selectedProfile && handleEditProfile(selectedProfile)}
+                disabled={isAnalyzing || !selectedProfile}
+                className="px-3 py-2 text-sm text-fg-muted hover:text-fg-default disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                Edit
+              </button>
+              <button
+                onClick={handleCreateProfile}
+                disabled={isAnalyzing}
+                className="px-3 py-2 text-sm text-fg-muted hover:text-fg-default disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                New
+              </button>
+              {selectedProfile && !selectedProfile.is_default && (
+                <button
+                  onClick={() => handleDeleteProfile(selectedProfile)}
+                  disabled={isAnalyzing}
+                  className="px-3 py-2 text-sm text-fg-muted hover:text-error disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  Delete
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Speech Analysis (if enabled) */}
+          {config?.features.speech_analysis && (
+            <div className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => setIncludeSpeech(!includeSpeech)}
+                    disabled={isAnalyzing}
+                    className={`
+                      relative w-9 h-5 rounded-full transition-colors
+                      ${includeSpeech ? "bg-accent" : "bg-bg-overlay"}
+                      disabled:opacity-50 disabled:cursor-not-allowed
+                    `}
+                  >
+                    <span
+                      className={`
+                        absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform
+                        ${includeSpeech ? "translate-x-4" : "translate-x-0"}
+                      `}
+                    />
+                  </button>
+                  <div>
+                    <p className="text-sm font-medium">Speech Analysis</p>
+                    <p className="text-xs text-fg-muted">Transcribe audio for keyword detection</p>
+                  </div>
                 </div>
-                <div className="w-full h-2 bg-bg-surface rounded-full overflow-hidden">
+                {includeSpeech && (
+                  <Select
+                    value={speechModelSize}
+                    onChange={setSpeechModelSize}
+                    options={[
+                      { value: "tiny", label: "Tiny" },
+                      { value: "base", label: "Base" },
+                      { value: "small", label: "Small" },
+                      { value: "medium", label: "Medium" },
+                    ]}
+                    disabled={isAnalyzing}
+                    className="w-28"
+                  />
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Analysis Progress */}
+        {isAnalyzing && (
+          <div className="mt-6 bg-bg-surface border border-border-default rounded-lg p-4">
+            <div className="flex items-center gap-3 mb-3">
+              <Spinner size="sm" />
+              <span className="text-sm font-medium">
+                {analysisProgress?.message || "Starting analysis..."}
+              </span>
+            </div>
+            {analysisProgress && (
+              <div className="space-y-1.5">
+                <div className="w-full h-1.5 bg-bg-overlay rounded-full overflow-hidden">
                   <div
                     className="h-full bg-accent transition-all duration-300"
                     style={{ width: `${analysisProgress.percent}%` }}
                   />
                 </div>
+                <p className="text-xs text-fg-muted text-right font-mono">
+                  {analysisProgress.percent}%
+                </p>
               </div>
-            ) : (
-              <p className="text-fg-secondary text-sm">
-                {includeSpeech
-                  ? "Starting speech transcription..."
-                  : "This may take a few minutes depending on the VOD length..."}
-              </p>
             )}
           </div>
         )}
 
-        {!isLoading && vodFiles.length === 0 && chatFiles.length === 0 && (
-          <Card className="p-6 mt-8">
-            <h3 className="font-semibold mb-2">Getting Started</h3>
-            <ol className="list-decimal list-inside space-y-2 text-fg-secondary text-sm">
-              <li>
-                Place VOD files in{" "}
-                <code className="bg-bg-overlay px-2 py-1 rounded font-mono text-fg-default">data/vods/</code>
-              </li>
-              <li>
-                Place chat JSON files in{" "}
-                <code className="bg-bg-overlay px-2 py-1 rounded font-mono text-fg-default">data/chats/</code>
-              </li>
-              <li>Refresh this page to see available files</li>
-            </ol>
-          </Card>
-        )}
+        {/* Submit Button */}
+        <div className="mt-6">
+          <Button
+            size="lg"
+            onClick={handleAnalyze}
+            disabled={!canAnalyze}
+            loading={isAnalyzing}
+            className="w-full"
+          >
+            {isAnalyzing ? "Analyzing..." : "Run Analysis"}
+          </Button>
+          {!selectedVod && !selectedChat && (
+            <p className="text-xs text-fg-muted text-center mt-2">
+              Select a VOD and chat file to continue
+            </p>
+          )}
+        </div>
       </main>
 
       <ProfileEditor
