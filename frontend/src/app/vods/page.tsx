@@ -39,7 +39,13 @@ export default function VodsPage() {
       const data = await refreshTwitchVods();
       setChannels(data.channels);
       setVods(data.vods);
-      addToast("success", `Loaded ${data.vods.length} VODs`);
+
+      if (data.errors && data.errors.length > 0) {
+        const failedChannels = data.errors.map((e) => e.channel).join(", ");
+        addToast("error", `Failed to fetch: ${failedChannels}`);
+      } else {
+        addToast("success", `Loaded ${data.vods.length} VODs`);
+      }
     } catch (err) {
       const apiError = err as ApiError;
       addToast("error", apiError.message || "Failed to refresh VODs");

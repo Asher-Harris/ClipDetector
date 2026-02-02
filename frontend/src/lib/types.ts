@@ -256,9 +256,15 @@ export type TwitchChannel = {
   display_name: string;
 };
 
+export type VodRefreshError = {
+  channel: string;
+  error: string;
+};
+
 export type VodListResponse = {
   channels: TwitchChannel[];
   vods: TwitchVod[];
+  errors?: VodRefreshError[];
 };
 
 export type DownloadProgress = {

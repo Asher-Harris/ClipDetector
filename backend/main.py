@@ -1563,11 +1563,13 @@ async def refresh_twitch_vods():
     storage = VodStorage(VODS_STORAGE_PATH)
 
     channels_to_fetch = twitch_config.get("channels", [])
+    errors = []
 
     for channel_login in channels_to_fetch:
         try:
             user = await client.get_user(channel_login)
             if not user:
+                errors.append({"channel": channel_login, "error": "Channel not found"})
                 continue
 
             vods = await client.get_channel_vods(user.id, limit=20)
@@ -1576,7 +1578,8 @@ async def refresh_twitch_vods():
                 channel_info={"id": user.id, "display_name": user.display_name},
                 new_vods=vods,
             )
-        except Exception:
+        except Exception as e:
+            errors.append({"channel": channel_login, "error": str(e)})
             continue
 
     data = storage.load()
@@ -1588,6 +1591,7 @@ async def refresh_twitch_vods():
     return {
         "channels": channels,
         "vods": data.get("vods", []),
+        "errors": errors,
     }
 
 
