@@ -383,16 +383,16 @@ function VideoPlayerInner({
 
   const zoomIn = useCallback(() => {
     setZoom(z => Math.min(MAX_ZOOM, z * 2));
-  }, []);
+  }, [setZoom]);
 
   const zoomOut = useCallback(() => {
     setZoom(z => Math.max(1, z / 2));
-  }, []);
+  }, [setZoom]);
 
   const resetZoom = useCallback(() => {
     setZoom(1);
     setViewportCenter(50);
-  }, []);
+  }, [setZoom, setViewportCenter]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
