@@ -1,4 +1,5 @@
 import json
+import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -6,11 +7,25 @@ from pathlib import Path
 import httpx
 
 
+def parse_duration_to_seconds(duration: str) -> int | None:
+    """Parse Twitch duration format (e.g., '4h44m4s') to seconds."""
+    if not duration:
+        return None
+    match = re.match(r"(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?", duration)
+    if not match:
+        return None
+    hours = int(match.group(1) or 0)
+    minutes = int(match.group(2) or 0)
+    seconds = int(match.group(3) or 0)
+    return hours * 3600 + minutes * 60 + seconds
+
+
 @dataclass
 class TwitchChannel:
     id: str
     login: str
     display_name: str
+    profile_image_url: str | None = None
 
 
 @dataclass
@@ -25,6 +40,9 @@ class TwitchVod:
     downloaded: bool = False
     video_filename: str | None = None
     chat_filename: str | None = None
+    channel_display_name: str | None = None
+    channel_profile_image_url: str | None = None
+    duration_seconds: int | None = None
 
 
 class TwitchClient:
@@ -81,6 +99,7 @@ class TwitchClient:
             id=user["id"],
             login=user["login"],
             display_name=user["display_name"],
+            profile_image_url=user.get("profile_image_url"),
         )
 
     async def get_channel_vods(
@@ -151,3 +170,59 @@ class VodStorage:
 
         data["vods"].sort(key=lambda v: v["created_at"], reverse=True)
         self.save(data)
+
+    def get_vod_with_paths(self, vod_id: str) -> dict | None:
+        """Returns VOD with video_path and chat_path computed."""
+        data = self.load()
+        channels = data.get("channels", {})
+
+        for vod in data.get("vods", []):
+            if vod["id"] == vod_id:
+                channel_info = channels.get(vod.get("channel_login"), {})
+                result = {**vod}
+                result["channel_display_name"] = channel_info.get("display_name")
+                result["channel_profile_image_url"] = channel_info.get("profile_image_url")
+                result["duration_seconds"] = parse_duration_to_seconds(vod.get("duration", ""))
+
+                if vod.get("video_filename"):
+                    result["video_path"] = f"vods/{vod['video_filename']}"
+                else:
+                    result["video_path"] = None
+
+                if vod.get("chat_filename"):
+                    result["chat_path"] = f"chats/{vod['chat_filename']}"
+                else:
+                    result["chat_path"] = None
+
+                return result
+        return None
+
+    def list_downloaded_vods_with_channel_info(self) -> list[dict]:
+        """Returns downloaded VODs with embedded channel info and computed paths."""
+        data = self.load()
+        channels = data.get("channels", {})
+        result = []
+
+        for vod in data.get("vods", []):
+            if not vod.get("downloaded"):
+                continue
+
+            channel_info = channels.get(vod.get("channel_login"), {})
+            vod_with_info = {**vod}
+            vod_with_info["channel_display_name"] = channel_info.get("display_name")
+            vod_with_info["channel_profile_image_url"] = channel_info.get("profile_image_url")
+            vod_with_info["duration_seconds"] = parse_duration_to_seconds(vod.get("duration", ""))
+
+            if vod.get("video_filename"):
+                vod_with_info["video_path"] = f"vods/{vod['video_filename']}"
+            else:
+                vod_with_info["video_path"] = None
+
+            if vod.get("chat_filename"):
+                vod_with_info["chat_path"] = f"chats/{vod['chat_filename']}"
+            else:
+                vod_with_info["chat_path"] = None
+
+            result.append(vod_with_info)
+
+        return result

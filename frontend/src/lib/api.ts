@@ -13,6 +13,7 @@ import type {
   VodListResponse,
   DownloadProgress,
   ActiveDownloadsResponse,
+  TwitchVod,
 } from "./types";
 
 const API_BASE = "http://localhost:8000";
@@ -323,4 +324,44 @@ export async function deleteVod(vodId: string): Promise<void> {
 
 export async function getActiveDownloads(): Promise<ActiveDownloadsResponse> {
   return apiRequest("/api/twitch/downloads/active");
+}
+
+// Downloaded VODs API
+export type DownloadedVodsResponse = {
+  vods: TwitchVod[];
+};
+
+export async function listDownloadedVods(): Promise<DownloadedVodsResponse> {
+  return apiRequest("/api/vods/downloaded");
+}
+
+export async function getVodDetail(vodId: string): Promise<TwitchVod> {
+  return apiRequest(`/api/vods/${vodId}`);
+}
+
+export type VodAnalyzeRequest = {
+  overlap_window?: number;
+  clip_buffer?: number;
+  audio_weight?: number;
+  chat_weight?: number;
+  audio_threshold_multiplier?: number;
+  chat_threshold?: number;
+  audio_intensity_cap?: number;
+  synergy_bonus?: number;
+  min_score?: number;
+  include_speech?: boolean;
+  speech_model_size?: string;
+  speech_language?: string;
+  speech_keyword_weight?: number;
+  speech_rate_weight?: number;
+};
+
+export async function analyzeVodById(
+  vodId: string,
+  request: VodAnalyzeRequest = {}
+): Promise<FullAnalysisResponse> {
+  return apiRequest(`/api/vods/${vodId}/analyze`, {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
 }

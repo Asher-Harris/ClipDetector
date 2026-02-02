@@ -42,6 +42,9 @@ export type AnalysisResult = {
   chatPath: string;
   candidates: ClipCandidateResult[];
   analyzedAt: string;
+  vodId?: string;
+  vodTitle?: string;
+  channelLogin?: string;
 };
 
 export type TTSVoice = "en-GB-RyanNeural" | "en-US-AndrewNeural";
@@ -255,11 +258,17 @@ export type TwitchVod = {
   downloaded: boolean;
   video_filename: string | null;
   chat_filename: string | null;
+  channel_display_name?: string;
+  channel_profile_image_url?: string;
+  duration_seconds?: number;
+  video_path?: string;
+  chat_path?: string;
 };
 
 export type TwitchChannel = {
   login: string;
   display_name: string;
+  profile_image_url?: string;
 };
 
 export type VodRefreshError = {

@@ -151,7 +151,16 @@ export function VodCard({ vod, onDownloadComplete, onDelete }: VodCardProps) {
         </h3>
 
         <div className="flex items-center gap-2 text-[11px] text-fg-muted">
-          <span className="font-medium text-fg-secondary">{vod.channel_login}</span>
+          {vod.channel_profile_image_url && (
+            <img
+              src={vod.channel_profile_image_url}
+              alt=""
+              className="w-4 h-4 rounded-full flex-shrink-0"
+            />
+          )}
+          <span className="font-medium text-fg-secondary">
+            {vod.channel_display_name || vod.channel_login}
+          </span>
           <span className="text-fg-faint">·</span>
           <span className="tabular-nums">{formatViewCount(vod.view_count)} views</span>
           <span className="text-fg-faint">·</span>

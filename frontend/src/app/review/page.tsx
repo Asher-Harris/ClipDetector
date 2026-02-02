@@ -117,10 +117,28 @@ export default function ReviewPage() {
   }
 
   const vodFilename = analysisResult.videoPath.split("/").pop() || "vod";
+  const displayTitle = analysisResult.vodTitle || vodFilename;
+  const displayChannel = analysisResult.channelLogin;
 
   return (
     <div className="min-h-screen bg-bg-base text-fg-default">
-      <AppHeader currentPage="review" showReviewLink />
+      <AppHeader currentPage="review" showReviewLink>
+        {(displayTitle || displayChannel) && (
+          <div className="hidden md:flex items-center gap-2 ml-4 text-sm">
+            {displayChannel && (
+              <span className="text-fg-muted">{displayChannel}</span>
+            )}
+            {displayChannel && displayTitle && (
+              <span className="text-fg-faint">/</span>
+            )}
+            {displayTitle && (
+              <span className="text-fg-secondary truncate max-w-[300px]" title={displayTitle}>
+                {displayTitle}
+              </span>
+            )}
+          </div>
+        )}
+      </AppHeader>
 
       <div className="max-w-[1800px] mx-auto px-6 py-6">
         <div className="grid grid-cols-12 gap-6">

@@ -1550,10 +1550,15 @@ def check_vod_downloaded(vod: dict, vods_dir: Path, chats_dir: Path) -> bool:
 async def list_twitch_vods():
     storage = VodStorage(VODS_STORAGE_PATH)
     data = storage.load()
+    channels_data = data.get("channels", {})
 
     channels = [
-        {"login": login, "display_name": info.get("display_name", login)}
-        for login, info in data.get("channels", {}).items()
+        {
+            "login": login,
+            "display_name": info.get("display_name", login),
+            "profile_image_url": info.get("profile_image_url"),
+        }
+        for login, info in channels_data.items()
     ]
 
     vods_dir = DATA_DIR / "vods"
@@ -1561,6 +1566,9 @@ async def list_twitch_vods():
     vods = data.get("vods", [])
     for vod in vods:
         vod["downloaded"] = check_vod_downloaded(vod, vods_dir, chats_dir)
+        channel_info = channels_data.get(vod.get("channel_login"), {})
+        vod["channel_display_name"] = channel_info.get("display_name")
+        vod["channel_profile_image_url"] = channel_info.get("profile_image_url")
 
     return {
         "channels": channels,
@@ -1596,7 +1604,11 @@ async def refresh_twitch_vods():
             vods = await client.get_channel_vods(user.id, limit=20)
             storage.merge_vods(
                 channel_login=user.login,
-                channel_info={"id": user.id, "display_name": user.display_name},
+                channel_info={
+                    "id": user.id,
+                    "display_name": user.display_name,
+                    "profile_image_url": user.profile_image_url,
+                },
                 new_vods=vods,
             )
         except Exception as e:
@@ -1604,9 +1616,14 @@ async def refresh_twitch_vods():
             continue
 
     data = storage.load()
+    channels_data = data.get("channels", {})
     channels = [
-        {"login": login, "display_name": info.get("display_name", login)}
-        for login, info in data.get("channels", {}).items()
+        {
+            "login": login,
+            "display_name": info.get("display_name", login),
+            "profile_image_url": info.get("profile_image_url"),
+        }
+        for login, info in channels_data.items()
     ]
 
     vods_dir = DATA_DIR / "vods"
@@ -1614,6 +1631,9 @@ async def refresh_twitch_vods():
     vods = data.get("vods", [])
     for vod in vods:
         vod["downloaded"] = check_vod_downloaded(vod, vods_dir, chats_dir)
+        channel_info = channels_data.get(vod.get("channel_login"), {})
+        vod["channel_display_name"] = channel_info.get("display_name")
+        vod["channel_profile_image_url"] = channel_info.get("profile_image_url")
 
     return {
         "channels": channels,
@@ -1850,6 +1870,182 @@ async def get_active_downloads():
             for vod_id, info in active_downloads.items()
         }
     }
+
+
+# ============ VOD Endpoints with Full Metadata ============
+
+@app.get("/api/vods/downloaded")
+async def list_downloaded_vods():
+    """List downloaded VODs with full metadata and paths."""
+    storage = VodStorage(VODS_STORAGE_PATH)
+    vods_dir = DATA_DIR / "vods"
+    chats_dir = DATA_DIR / "chats"
+
+    vods = storage.list_downloaded_vods_with_channel_info()
+    for vod in vods:
+        video_filename = vod.get("video_filename")
+        chat_filename = vod.get("chat_filename")
+        vod["downloaded"] = (
+            video_filename and chat_filename and
+            (vods_dir / video_filename).exists() and
+            (chats_dir / chat_filename).exists()
+        )
+    return {"vods": vods}
+
+
+@app.get("/api/vods/{vod_id}")
+async def get_vod_detail(vod_id: str):
+    """Get single VOD detail with paths."""
+    storage = VodStorage(VODS_STORAGE_PATH)
+    vod = storage.get_vod_with_paths(vod_id)
+    if not vod:
+        raise HTTPException(status_code=404, detail="VOD not found")
+
+    vods_dir = DATA_DIR / "vods"
+    chats_dir = DATA_DIR / "chats"
+    video_filename = vod.get("video_filename")
+    chat_filename = vod.get("chat_filename")
+    vod["downloaded"] = (
+        video_filename and chat_filename and
+        (vods_dir / video_filename).exists() and
+        (chats_dir / chat_filename).exists()
+    )
+
+    return vod
+
+
+class VodAnalyzeRequest(BaseModel):
+    overlap_window: float = Field(default=10.0, ge=1.0, le=60.0)
+    clip_buffer: float = Field(default=30.0, ge=5.0, le=120.0)
+    audio_weight: float | None = Field(default=None, ge=0.0, le=5.0)
+    chat_weight: float | None = Field(default=None, ge=0.0, le=5.0)
+    audio_threshold_multiplier: float | None = Field(default=None, ge=1.0, le=10.0)
+    chat_threshold: float | None = Field(default=None, ge=1.0, le=10.0)
+    audio_intensity_cap: float | None = Field(default=None, ge=1.0, le=10.0)
+    synergy_bonus: float | None = Field(default=None, ge=0.0, le=2.0)
+    min_score: float | None = Field(default=None, ge=0.0, le=50.0)
+    include_speech: bool = Field(default=False)
+    speech_model_size: str = Field(default="base")
+    speech_language: str = Field(default="en")
+    speech_keyword_weight: float | None = Field(default=None, ge=0.0, le=5.0)
+    speech_rate_weight: float | None = Field(default=None, ge=0.0, le=5.0)
+
+
+@app.post("/api/vods/{vod_id}/analyze")
+async def analyze_vod_by_id(vod_id: str, request: VodAnalyzeRequest):
+    """Analyze VOD by ID (resolves paths internally)."""
+    storage = VodStorage(VODS_STORAGE_PATH)
+    vod = storage.get_vod_with_paths(vod_id)
+    if not vod:
+        raise HTTPException(status_code=404, detail="VOD not found")
+
+    video_path = vod.get("video_path")
+    chat_path = vod.get("chat_path")
+
+    if not video_path or not chat_path:
+        raise HTTPException(status_code=400, detail="VOD not downloaded")
+
+    if request.include_speech and not is_feature_enabled("speech_analysis"):
+        raise HTTPException(
+            status_code=403,
+            detail="Speech analysis is disabled in config"
+        )
+
+    try:
+        video_full_path = resolve_safe_path(video_path, DATA_DIR)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid video path")
+
+    try:
+        chat_full_path = resolve_safe_path(chat_path, DATA_DIR)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid chat path")
+
+    if not video_full_path.exists():
+        raise HTTPException(status_code=404, detail=f"Video file not found: {video_path}")
+
+    if not chat_full_path.exists():
+        raise HTTPException(status_code=404, detail=f"Chat file not found: {chat_path}")
+
+    audio_config = AudioConfig(
+        threshold_multiplier=request.audio_threshold_multiplier or 2.5,
+    )
+
+    chat_config = ChatConfig(
+        threshold=request.chat_threshold or 3.0,
+    )
+
+    fusion_config = FusionConfig(
+        overlap_window=request.overlap_window,
+        clip_buffer=request.clip_buffer,
+        audio_weight=request.audio_weight or 1.0,
+        chat_weight=request.chat_weight or 1.5,
+        audio_intensity_cap=request.audio_intensity_cap or 2.5,
+        synergy_bonus=request.synergy_bonus or 0.75,
+        min_score=request.min_score or 3.0,
+        speech_keyword_weight=request.speech_keyword_weight or 1.5,
+        speech_rate_weight=request.speech_rate_weight or 1.0,
+    )
+
+    speech_config = None
+    if request.include_speech:
+        speech_config = SpeechConfig(
+            model_size=request.speech_model_size,
+            language=request.speech_language,
+        )
+
+    try:
+        candidates = analyze_full(
+            video_full_path,
+            chat_full_path,
+            audio_config=audio_config,
+            chat_config=chat_config,
+            fusion_config=fusion_config,
+            include_speech=request.include_speech,
+            speech_config=speech_config,
+        )
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid chat JSON file: {e}")
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    return FullAnalysisResponse(
+        video_path=video_path,
+        chat_path=chat_path,
+        candidates=[
+            ClipCandidateResult(
+                timestamp=c.timestamp,
+                score=c.score,
+                signals=c.signals,
+                clip_start=c.clip_start,
+                clip_end=c.clip_end,
+            )
+            for c in candidates
+        ],
+        total_candidates=len(candidates),
+        config={
+            "overlap_window": fusion_config.overlap_window,
+            "clip_buffer": fusion_config.clip_buffer,
+            "dedup_window": fusion_config.dedup_window,
+            "audio_weight": fusion_config.audio_weight,
+            "chat_weight": fusion_config.chat_weight,
+            "audio_threshold_multiplier": audio_config.threshold_multiplier,
+            "chat_threshold": chat_config.threshold,
+            "audio_intensity_cap": fusion_config.audio_intensity_cap,
+            "synergy_bonus": fusion_config.synergy_bonus,
+            "min_score": fusion_config.min_score,
+            "include_speech": request.include_speech,
+            "speech_model_size": request.speech_model_size if request.include_speech else None,
+            "speech_language": request.speech_language if request.include_speech else None,
+            "speech_keyword_weight": fusion_config.speech_keyword_weight if request.include_speech else None,
+            "speech_rate_weight": fusion_config.speech_rate_weight if request.include_speech else None,
+            "vod_id": vod_id,
+            "vod_title": vod.get("title"),
+            "channel_login": vod.get("channel_login"),
+        }
+    )
 
 
 @app.delete("/api/twitch/vods/{vod_id}")

@@ -6,6 +6,7 @@ import { ThemeToggle } from "./ThemeToggle";
 type AppHeaderProps = {
   currentPage: "analyze" | "vods" | "review";
   showReviewLink?: boolean;
+  children?: React.ReactNode;
 };
 
 type NavLinkProps = {
@@ -29,15 +30,15 @@ function NavLink({ href, isActive, children }: NavLinkProps) {
   );
 }
 
-export function AppHeader({ currentPage, showReviewLink = false }: AppHeaderProps) {
+export function AppHeader({ currentPage, showReviewLink = false, children }: AppHeaderProps) {
   return (
     <header className="sticky top-0 z-10 bg-bg-base/80 backdrop-blur-sm border-b border-border-subtle">
       <div className="max-w-[1800px] mx-auto px-6 h-14 flex items-center justify-between">
-        <div className="flex items-center gap-6">
-          <Link href="/" className="text-sm font-semibold text-fg-default">
+        <div className="flex items-center gap-6 flex-1 min-w-0">
+          <Link href="/" className="text-sm font-semibold text-fg-default flex-shrink-0">
             ClipDetector
           </Link>
-          <nav className="flex items-center gap-1">
+          <nav className="flex items-center gap-1 flex-shrink-0">
             <NavLink href="/" isActive={currentPage === "analyze"}>
               Analyze
             </NavLink>
@@ -50,6 +51,7 @@ export function AppHeader({ currentPage, showReviewLink = false }: AppHeaderProp
               </NavLink>
             )}
           </nav>
+          {children}
         </div>
         <ThemeToggle />
       </div>

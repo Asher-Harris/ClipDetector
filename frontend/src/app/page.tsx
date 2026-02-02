@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { AppHeader, Button, Select, Spinner } from "@/components/ui";
 import { ProfileEditor } from "@/components/ProfileEditor";
+import { VodSelector } from "@/components/VodSelector";
 import {
-  listFiles,
-  runFullAnalysis,
-  runFullAnalysisWithProgress,
+  listDownloadedVods,
+  analyzeVodById,
   checkHealth,
   listProfiles,
   createProfile,
@@ -19,7 +20,7 @@ import {
 } from "@/lib/api";
 import { useToast } from "@/context/ToastContext";
 import { useApp } from "@/context/AppContext";
-import type { Profile, ProfileCreateRequest, SelectOption } from "@/lib/types";
+import type { Profile, ProfileCreateRequest, SelectOption, TwitchVod } from "@/lib/types";
 
 export default function Home() {
   const router = useRouter();
@@ -27,10 +28,8 @@ export default function Home() {
   const { setAnalysisResult, analysisResult } = useApp();
 
   const [isHealthy, setIsHealthy] = useState<boolean | null>(null);
-  const [vodFiles, setVodFiles] = useState<string[]>([]);
-  const [chatFiles, setChatFiles] = useState<string[]>([]);
-  const [selectedVod, setSelectedVod] = useState("");
-  const [selectedChat, setSelectedChat] = useState("");
+  const [downloadedVods, setDownloadedVods] = useState<TwitchVod[]>([]);
+  const [selectedVodId, setSelectedVodId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -43,18 +42,22 @@ export default function Home() {
   const [analysisProgress, setAnalysisProgress] = useState<AnalysisProgress | null>(null);
   const [config, setConfig] = useState<AppConfig | null>(null);
 
+  const selectedVod = useMemo(
+    () => downloadedVods.find((v) => v.id === selectedVodId),
+    [downloadedVods, selectedVodId]
+  );
+
   useEffect(() => {
     async function init() {
       try {
         await checkHealth();
         setIsHealthy(true);
-        const [files, profileList, appConfig] = await Promise.all([
-          listFiles(),
+        const [vodsResponse, profileList, appConfig] = await Promise.all([
+          listDownloadedVods(),
           listProfiles(),
           getConfig(),
         ]);
-        setVodFiles(files.vods);
-        setChatFiles(files.chats);
+        setDownloadedVods(vodsResponse.vods);
         setProfiles(profileList);
         setConfig(appConfig);
       } catch {
@@ -68,7 +71,7 @@ export default function Home() {
   }, [addToast]);
 
   const handleAnalyze = async () => {
-    if (!selectedVod || !selectedChat) return;
+    if (!selectedVodId || !selectedVod) return;
 
     const profile = profiles.find((p) => p.id === selectedProfileId);
     const speechEnabled = includeSpeech && config?.features.speech_analysis;
@@ -77,8 +80,6 @@ export default function Home() {
     setAnalysisProgress(null);
 
     const requestParams = {
-      video_path: `vods/${selectedVod}`,
-      chat_path: `chats/${selectedChat}`,
       audio_weight: profile?.audio_weight,
       chat_weight: profile?.chat_weight,
       audio_threshold_multiplier: profile?.audio_threshold_multiplier,
@@ -90,18 +91,16 @@ export default function Home() {
     };
 
     try {
-      let result;
-      if (speechEnabled) {
-        result = await runFullAnalysisWithProgress(requestParams, setAnalysisProgress);
-      } else {
-        result = await runFullAnalysis(requestParams);
-      }
+      const result = await analyzeVodById(selectedVodId, requestParams);
 
       setAnalysisResult({
         videoPath: result.video_path,
         chatPath: result.chat_path,
         candidates: result.candidates,
         analyzedAt: new Date().toISOString(),
+        vodId: selectedVodId,
+        vodTitle: selectedVod.title,
+        channelLogin: selectedVod.channel_login,
       });
 
       addToast("success", `Found ${result.total_candidates} clip candidates`);
@@ -162,18 +161,8 @@ export default function Home() {
     }
   };
 
-  const canAnalyze = selectedVod && selectedChat && !isAnalyzing && isHealthy;
+  const canAnalyze = selectedVodId && !isAnalyzing && isHealthy;
   const selectedProfile = profiles.find((p) => p.id === selectedProfileId);
-
-  const vodOptions: SelectOption[] = vodFiles.map((file) => ({
-    value: file,
-    label: file,
-  }));
-
-  const chatOptions: SelectOption[] = chatFiles.map((file) => ({
-    value: file,
-    label: file,
-  }));
 
   const profileOptions: SelectOption[] = profiles.map((p) => ({
     value: p.id,
@@ -216,40 +205,26 @@ export default function Home() {
     );
   }
 
-  const hasNoFiles = vodFiles.length === 0 && chatFiles.length === 0;
+  const hasNoVods = downloadedVods.length === 0;
 
-  if (hasNoFiles) {
+  if (hasNoVods) {
     return (
       <div className="min-h-screen bg-bg-base text-fg-default">
         <AppHeader currentPage="analyze" showReviewLink={!!analysisResult} />
         <main className="max-w-2xl mx-auto px-6 py-16">
           <div className="text-center mb-8">
-            <h2 className="text-lg font-medium mb-2">No Files Found</h2>
-            <p className="text-fg-secondary text-sm">
-              Add VOD and chat files to get started.
+            <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-bg-surface border border-border-default mb-4">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-fg-muted">
+                <path d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </div>
+            <h2 className="text-lg font-medium mb-2">No Downloaded VODs</h2>
+            <p className="text-fg-secondary text-sm mb-6">
+              Download VODs from Twitch to start analyzing for clip-worthy moments.
             </p>
-          </div>
-          <div className="bg-bg-surface border border-border-default rounded-lg p-6">
-            <ol className="space-y-4 text-sm">
-              <li className="flex gap-3">
-                <span className="flex-shrink-0 w-5 h-5 rounded-full bg-bg-overlay text-fg-muted text-xs flex items-center justify-center font-medium">1</span>
-                <div>
-                  <p className="text-fg-default">Place VOD files in</p>
-                  <code className="text-fg-muted font-mono text-xs">data/vods/</code>
-                </div>
-              </li>
-              <li className="flex gap-3">
-                <span className="flex-shrink-0 w-5 h-5 rounded-full bg-bg-overlay text-fg-muted text-xs flex items-center justify-center font-medium">2</span>
-                <div>
-                  <p className="text-fg-default">Place chat JSON files in</p>
-                  <code className="text-fg-muted font-mono text-xs">data/chats/</code>
-                </div>
-              </li>
-              <li className="flex gap-3">
-                <span className="flex-shrink-0 w-5 h-5 rounded-full bg-bg-overlay text-fg-muted text-xs flex items-center justify-center font-medium">3</span>
-                <p className="text-fg-default">Refresh this page</p>
-              </li>
-            </ol>
+            <Link href="/vods">
+              <Button>Go to VODs Page</Button>
+            </Link>
           </div>
         </main>
       </div>
@@ -269,34 +244,17 @@ export default function Home() {
         </div>
 
         <div className="bg-bg-surface border border-border-default rounded-lg divide-y divide-border-default">
-          {/* File Selection */}
+          {/* VOD Selection */}
           <div className="p-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-medium text-fg-muted mb-1.5 uppercase tracking-wide">
-                  VOD File
-                </label>
-                <Select
-                  options={vodOptions}
-                  value={selectedVod}
-                  onChange={setSelectedVod}
-                  placeholder="Select VOD..."
-                  disabled={isAnalyzing || vodFiles.length === 0}
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-fg-muted mb-1.5 uppercase tracking-wide">
-                  Chat Log
-                </label>
-                <Select
-                  options={chatOptions}
-                  value={selectedChat}
-                  onChange={setSelectedChat}
-                  placeholder="Select chat..."
-                  disabled={isAnalyzing || chatFiles.length === 0}
-                />
-              </div>
-            </div>
+            <label className="block text-xs font-medium text-fg-muted mb-3 uppercase tracking-wide">
+              Select VOD
+            </label>
+            <VodSelector
+              vods={downloadedVods}
+              selectedVodId={selectedVodId}
+              onSelect={setSelectedVodId}
+              disabled={isAnalyzing}
+            />
           </div>
 
           {/* Profile Selection */}
@@ -421,9 +379,9 @@ export default function Home() {
           >
             {isAnalyzing ? "Analyzing..." : "Run Analysis"}
           </Button>
-          {!selectedVod && !selectedChat && (
+          {!selectedVodId && (
             <p className="text-xs text-fg-muted text-center mt-2">
-              Select a VOD and chat file to continue
+              Select a VOD to continue
             </p>
           )}
         </div>
