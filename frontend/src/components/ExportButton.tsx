@@ -120,36 +120,40 @@ export function ExportButton({ clips, vodFilename, vodPath }: ExportButtonProps)
     }
   }, [results, isExporting]);
 
+  const hasClips = clipsToExport.length > 0;
+
   return (
-    <div className="flex flex-col gap-2">
+    <div className="space-y-2">
       <Button
         variant="primary"
+        size="sm"
         onClick={handleExport}
-        disabled={clipsToExport.length === 0 || isExporting}
+        disabled={!hasClips || isExporting}
+        className="w-full"
       >
         {isExporting ? (
           <span className="flex items-center gap-2">
             <Spinner size="sm" />
-            Exporting {Math.min(currentIndex + 3, clipsToExport.length)}/{clipsToExport.length}...
+            <span className="tabular-nums">{Math.min(currentIndex + 3, clipsToExport.length)}/{clipsToExport.length}</span>
           </span>
+        ) : hasClips ? (
+          `Export ${clipsToExport.length} clip${clipsToExport.length !== 1 ? "s" : ""}`
         ) : (
-          `Export ${clipsToExport.length} Clip${clipsToExport.length !== 1 ? "s" : ""}`
+          "No clips to export"
         )}
       </Button>
 
       {results.length > 0 && !isExporting && (
-        <p className="text-sm">
+        <p className="text-xs text-center">
           {successCount > 0 && (
             <span className="text-success">
-              ✓ {successCount} clip{successCount !== 1 ? "s" : ""} exported
-              {introCount > 0 && ` (${introCount} with intro${videoCount > 0 ? `, ${videoCount} with video` : ""})`}
+              {successCount} exported
+              {introCount > 0 && ` · ${introCount} intros`}
             </span>
           )}
           {successCount > 0 && errorCount > 0 && " · "}
           {errorCount > 0 && (
-            <span className="text-error">
-              ✗ {errorCount} failed
-            </span>
+            <span className="text-error">{errorCount} failed</span>
           )}
         </p>
       )}

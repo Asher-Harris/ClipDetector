@@ -97,21 +97,21 @@ export default function ReviewPage() {
     [handleSelectClip]
   );
 
-  const handleNewAnalysis = () => {
-    clearAnalysisResult();
-    router.push("/");
-  };
-
   if (!analysisResult) {
     return (
       <div className="min-h-screen bg-bg-base text-fg-default flex items-center justify-center">
-        <Card className="p-8 text-center">
-          <h2 className="text-xl font-semibold mb-4">No Analysis Results</h2>
-          <p className="text-fg-secondary mb-6">
-            Run an analysis first to review clip candidates.
+        <div className="text-center">
+          <div className="w-12 h-12 mx-auto mb-4 rounded-xl bg-bg-surface border border-border-default flex items-center justify-center">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-fg-muted">
+              <path d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </div>
+          <h2 className="text-base font-medium text-fg-default mb-1">No Analysis Results</h2>
+          <p className="text-sm text-fg-muted mb-6">
+            Run an analysis first to review clips
           </p>
           <Button onClick={() => router.push("/")}>Go to Analysis</Button>
-        </Card>
+        </div>
       </div>
     );
   }
@@ -122,22 +122,7 @@ export default function ReviewPage() {
     <div className="min-h-screen bg-bg-base text-fg-default">
       <AppHeader currentPage="review" showReviewLink />
 
-      <div className="border-b border-border-subtle bg-bg-base">
-        <div className="max-w-[1800px] mx-auto px-6 h-12 flex items-center justify-between">
-          <p className="text-sm text-fg-muted">
-            {vodFilename} · {clipsWithStatus.length} candidates
-          </p>
-          <div className="flex items-center gap-2">
-            <ExportButton
-              clips={editedClips}
-              vodFilename={vodFilename}
-              vodPath={analysisResult.videoPath}
-            />
-          </div>
-        </div>
-      </div>
-
-      <div className="max-w-[1800px] mx-auto p-6">
+      <div className="max-w-[1800px] mx-auto px-6 py-6">
         <div className="grid grid-cols-12 gap-6">
           <div className="col-span-12 lg:col-span-4 xl:col-span-3">
             <div className="sticky top-20 h-[calc(100vh-120px)] flex flex-col">
@@ -146,11 +131,14 @@ export default function ReviewPage() {
                 selectedClipId={selectedClipId}
                 onSelectClip={handleSelectClip}
                 onReset={handleReset}
+                vodFilename={vodFilename}
+                vodPath={analysisResult.videoPath}
+                editedClips={editedClips}
               />
             </div>
           </div>
 
-          <div className="col-span-12 lg:col-span-8 xl:col-span-9 space-y-6">
+          <div className="col-span-12 lg:col-span-8 xl:col-span-9 space-y-4">
             {selectedClip ? (
               <VideoPlayer
                 vodPath={analysisResult.videoPath}
@@ -168,11 +156,16 @@ export default function ReviewPage() {
                 onViewportCenterChange={setViewportCenter}
               />
             ) : (
-              <Card className="p-8 text-center aspect-video flex items-center justify-center">
-                <p className="text-fg-secondary">
-                  Select a clip from the list to preview and trim
-                </p>
-              </Card>
+              <div className="aspect-video bg-bg-surface border border-border-default rounded-lg flex items-center justify-center">
+                <div className="text-center">
+                  <div className="w-10 h-10 mx-auto mb-3 rounded-lg bg-bg-overlay flex items-center justify-center">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-fg-faint">
+                      <polygon points="5 3 19 12 5 21 5 3" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </div>
+                  <p className="text-sm text-fg-muted">Select a clip to preview</p>
+                </div>
+              </div>
             )}
 
             <Timeline

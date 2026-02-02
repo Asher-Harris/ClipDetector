@@ -78,16 +78,14 @@ export function Timeline({
 
   return (
     <div className="bg-bg-surface border border-border-default rounded-lg p-4">
-      <h3 className="text-sm font-medium text-fg-secondary mb-3">VOD Timeline</h3>
-
       <div
         ref={containerRef}
-        className="relative h-8 bg-bg-overlay rounded cursor-pointer mb-2 overflow-hidden"
+        className="relative h-10 bg-bg-overlay rounded-md cursor-pointer mb-2 overflow-hidden"
         onClick={handleClick}
       >
         {trimStart !== undefined && trimEnd !== undefined && (
           <div
-            className="absolute top-0 bottom-0 bg-accent/30"
+            className="absolute top-0 bottom-0 bg-accent/20"
             style={{
               left: `${timeToPercent(trimStart)}%`,
               width: `${timeToPercent(Math.min(trimEnd, duration)) - timeToPercent(trimStart)}%`,
@@ -98,22 +96,20 @@ export function Timeline({
         {markers.map((marker) => {
           const isSelected = marker.id === selectedMarkerId;
           const intensity = marker.score / maxScore;
-          const size = 8 + intensity * 8;
 
           return (
             <button
               key={marker.id}
-              className={`absolute top-1/2 -translate-y-1/2 rounded-full transition-all ${
+              className={`absolute top-1/2 w-1 transition-all rounded-full ${
                 isSelected
-                  ? "bg-accent ring-2 ring-accent/50"
-                  : "bg-fg-muted hover:bg-fg-secondary"
+                  ? "bg-accent"
+                  : "bg-fg-faint hover:bg-fg-muted"
               }`}
               style={{
                 left: `${timeToPercent(marker.time)}%`,
-                width: size,
-                height: size,
+                height: `${40 + intensity * 50}%`,
                 transform: `translate(-50%, -50%)`,
-                opacity: 0.5 + intensity * 0.5,
+                opacity: isSelected ? 1 : 0.4 + intensity * 0.4,
               }}
               onClick={(e) => {
                 e.stopPropagation();
@@ -128,15 +124,13 @@ export function Timeline({
           className="absolute top-0 bottom-0 w-0.5 bg-fg-default z-10 pointer-events-none"
           style={{ left: `${timeToPercent(currentTime)}%` }}
         >
-          <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent border-t-fg-default" />
+          <div className="absolute -top-0.5 left-1/2 -translate-x-1/2 w-2 h-2 bg-fg-default rounded-full" />
         </div>
       </div>
 
-      <div className="flex justify-between text-xs text-fg-muted">
+      <div className="flex justify-between text-[11px] text-fg-faint font-mono">
         {timeLabels.map(({ time, label }) => (
-          <span key={time} className="font-mono">
-            {label}
-          </span>
+          <span key={time}>{label}</span>
         ))}
       </div>
     </div>

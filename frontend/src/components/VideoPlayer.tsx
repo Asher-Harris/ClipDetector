@@ -3,7 +3,7 @@
 import React, { useRef, useCallback, useState, useEffect, memo } from "react";
 import { getVideoUrl } from "@/lib/api";
 import { formatTime } from "@/lib/format";
-import { Button, Spinner } from "./ui";
+import { Spinner } from "./ui";
 
 interface WaveformProps {
   blob: Blob;
@@ -471,15 +471,15 @@ function VideoPlayerInner({
         )}
       </div>
 
-      <div className="p-4">
+      <div className="p-4 space-y-3">
         <div
           ref={progressRef}
-          className="relative h-12 mb-4 cursor-pointer select-none overflow-hidden"
+          className="relative h-12 cursor-pointer select-none overflow-hidden rounded-md bg-bg-overlay"
           onClick={handleProgressClick}
         >
           {audioBlob && (
             <div
-              className="absolute top-0 bottom-0 flex items-center opacity-40 pointer-events-none"
+              className="absolute top-0 bottom-0 flex items-center opacity-30 pointer-events-none"
               style={{
                 width: `${zoom * 100}%`,
                 left: `${-viewportStart * zoom}%`,
@@ -494,10 +494,8 @@ function VideoPlayerInner({
             </div>
           )}
 
-          <div className="absolute top-1/2 -translate-y-1/2 left-0 right-0 h-2 bg-bg-overlay rounded-full" />
-
           <div
-            className="absolute top-1/2 -translate-y-1/2 h-10 bg-accent/20 rounded"
+            className="absolute top-0 bottom-0 bg-accent/15"
             style={{
               left: `${trimStartPercent}%`,
               width: `${Math.min(100, trimEndPercent) - trimStartPercent}%`,
@@ -506,7 +504,7 @@ function VideoPlayerInner({
 
           {internalTime >= trimStart && internalTime <= trimEnd && (
             <div
-              className="absolute top-1/2 -translate-y-1/2 h-10 bg-accent/30 rounded-l"
+              className="absolute top-0 bottom-0 bg-accent/25"
               style={{
                 left: `${trimStartPercent}%`,
                 width: `${Math.max(0, playheadPercent - trimStartPercent)}%`,
@@ -515,122 +513,163 @@ function VideoPlayerInner({
           )}
 
           <div
-            className="absolute top-1/2 -translate-y-1/2 z-20 cursor-ew-resize group"
+            className="absolute top-0 bottom-0 z-20 cursor-ew-resize group"
             style={{ left: `${trimStartPercent}%` }}
             onMouseDown={startDrag("start")}
           >
-            <div className="relative -translate-x-1/2">
-              <div className="w-1 h-10 bg-success rounded-full group-hover:brightness-110 transition-all" />
-              <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-success text-white text-xs px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+            <div className="relative -translate-x-1/2 h-full flex items-center">
+              <div className="w-1 h-full bg-success/80 group-hover:bg-success transition-colors" />
+              <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-bg-surface border border-border-default text-fg-default text-[10px] font-mono px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap shadow-lg">
                 {formatTime(trimStart)}
               </div>
             </div>
           </div>
 
           <div
-            className="absolute top-1/2 -translate-y-1/2 z-20 cursor-ew-resize group"
+            className="absolute top-0 bottom-0 z-20 cursor-ew-resize group"
             style={{ left: `${trimEndPercent}%` }}
             onMouseDown={startDrag("end")}
           >
-            <div className="relative -translate-x-1/2">
-              <div className="w-1 h-10 bg-error rounded-full group-hover:brightness-110 transition-all" />
-              <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-error text-white text-xs px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+            <div className="relative -translate-x-1/2 h-full flex items-center">
+              <div className="w-1 h-full bg-error/80 group-hover:bg-error transition-colors" />
+              <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-bg-surface border border-border-default text-fg-default text-[10px] font-mono px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap shadow-lg">
                 {formatTime(trimEnd)}
               </div>
             </div>
           </div>
 
           <div
-            className="absolute top-1/2 -translate-y-1/2 z-30 cursor-grab active:cursor-grabbing"
+            className="absolute top-0 bottom-0 z-30 cursor-grab active:cursor-grabbing"
             style={{ left: `${playheadPercent}%` }}
             onMouseDown={startDrag("playhead")}
           >
-            <div className="relative -translate-x-1/2">
-              <div className="w-3 h-3 bg-fg-default rounded-full shadow-lg ring-2 ring-fg-default/30" />
+            <div className="relative -translate-x-1/2 h-full">
+              <div className="w-0.5 h-full bg-fg-default" />
+              <div className="absolute top-0 left-1/2 -translate-x-1/2 w-2.5 h-2.5 bg-fg-default rounded-full" />
             </div>
           </div>
         </div>
 
-        <div className="flex items-center justify-between mb-4 text-sm">
-          <div className="flex items-center gap-4">
-            <span className="text-fg-muted">
-              <span className="text-fg-default font-mono">{formatTime(internalTime)}</span>
-              <span className="mx-1">/</span>
-              <span className="font-mono">{formatTime(duration)}</span>
-            </span>
-          </div>
-          <div className="flex items-center gap-2 text-fg-muted">
-            <span className="text-success">In:</span>
-            <span className="font-mono text-fg-default">{formatTime(trimStart)}</span>
-            <span className="text-error ml-2">Out:</span>
-            <span className="font-mono text-fg-default">{formatTime(trimEnd)}</span>
-            <span className="text-fg-faint ml-2">({formatTime(clipDuration)} clip)</span>
-          </div>
-        </div>
-
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={jumpToStart} title="Jump to clip start [">
-              ⏮
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => skip(-5)} title="Back 5s (←)">
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={jumpToStart}
+              className="p-1.5 rounded hover:bg-bg-hover text-fg-muted hover:text-fg-default transition-colors"
+              title="Jump to in point ["
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M6 6h2v12H6zM9.5 12l8.5 6V6z"/>
+              </svg>
+            </button>
+            <button
+              onClick={() => skip(-5)}
+              className="px-2 py-1 rounded text-xs font-medium text-fg-muted hover:text-fg-default hover:bg-bg-hover transition-colors"
+              title="Back 5s ←"
+            >
               -5s
-            </Button>
-            <Button variant="primary" size="sm" onClick={togglePlay} title="Play/Pause (Space)">
-              {isPlaying ? "Pause" : "Play"}
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => skip(5)} title="Forward 5s (→)">
+            </button>
+            <button
+              onClick={togglePlay}
+              className="w-8 h-8 rounded-full bg-accent hover:bg-accent-hover text-accent-fg flex items-center justify-center transition-colors"
+              title="Play/Pause (Space)"
+            >
+              {isPlaying ? (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                  <rect x="6" y="4" width="4" height="16" rx="1"/>
+                  <rect x="14" y="4" width="4" height="16" rx="1"/>
+                </svg>
+              ) : (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M8 5v14l11-7z"/>
+                </svg>
+              )}
+            </button>
+            <button
+              onClick={() => skip(5)}
+              className="px-2 py-1 rounded text-xs font-medium text-fg-muted hover:text-fg-default hover:bg-bg-hover transition-colors"
+              title="Forward 5s →"
+            >
               +5s
-            </Button>
-            <Button variant="ghost" size="sm" onClick={jumpToEnd} title="Jump to clip end ]">
-              ⏭
-            </Button>
+            </button>
+            <button
+              onClick={jumpToEnd}
+              className="p-1.5 rounded hover:bg-bg-hover text-fg-muted hover:text-fg-default transition-colors"
+              title="Jump to out point ]"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M16 6h2v12h-2zM6 6l8.5 6L6 18z"/>
+              </svg>
+            </button>
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4 text-xs">
+            <div className="flex items-center gap-2 text-fg-muted font-mono tabular-nums">
+              <span className="text-fg-default">{formatTime(internalTime)}</span>
+              <span>/</span>
+              <span>{formatTime(duration)}</span>
+            </div>
+
+            <div className="h-4 w-px bg-border-default" />
+
+            <div className="flex items-center gap-2 font-mono tabular-nums">
+              <span className="text-success">{formatTime(trimStart)}</span>
+              <span className="text-fg-faint">→</span>
+              <span className="text-error">{formatTime(trimEnd)}</span>
+              <span className="text-fg-muted">({formatTime(clipDuration)})</span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
             <button
               onClick={() => setSnapEnabled(!snapEnabled)}
               className={`p-1.5 rounded transition-colors ${
                 snapEnabled
-                  ? "text-accent bg-accent-muted hover:bg-accent/30"
-                  : "text-fg-muted hover:text-fg-secondary hover:bg-bg-hover"
+                  ? "text-accent bg-accent-muted"
+                  : "text-fg-faint hover:text-fg-muted hover:bg-bg-hover"
               }`}
-              title={`Snap to playhead: ${snapEnabled ? "ON" : "OFF"}`}
+              title={`Snap: ${snapEnabled ? "ON" : "OFF"}`}
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path
-                  d="M5 4v10a7 7 0 0 0 14 0V4"
-                  stroke="currentColor"
-                  fill="none"
-                />
-                <rect x="3" y="2" width="4" height="6" rx="1" fill={snapEnabled ? "#eb0400" : "currentColor"} stroke="none" />
-                <rect x="17" y="2" width="4" height="6" rx="1" fill={snapEnabled ? "#9147ff" : "currentColor"} stroke="none" />
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M5 4v10a7 7 0 0 0 14 0V4" stroke="currentColor" fill="none" />
+                <rect x="3" y="2" width="4" height="6" rx="1" fill="currentColor" stroke="none" />
+                <rect x="17" y="2" width="4" height="6" rx="1" fill="currentColor" stroke="none" />
               </svg>
             </button>
 
-            <div className="flex items-center gap-2">
-              <Button variant="ghost" size="sm" onClick={zoomOut} disabled={zoom <= 1} title="Zoom out (-)">
-                −
-              </Button>
-              <span className="text-xs text-fg-muted font-mono w-10 text-center">
-                {zoom}x
+            <div className="flex items-center">
+              <button
+                onClick={zoomOut}
+                disabled={zoom <= 1}
+                className="p-1.5 rounded hover:bg-bg-hover text-fg-muted hover:text-fg-default disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                title="Zoom out (-)"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="11" cy="11" r="8"/>
+                  <path d="M21 21l-4.35-4.35M8 11h6"/>
+                </svg>
+              </button>
+              <span className="text-[11px] text-fg-muted font-mono w-8 text-center tabular-nums">
+                {zoom}×
               </span>
-              <Button variant="ghost" size="sm" onClick={zoomIn} disabled={zoom >= MAX_ZOOM} title="Zoom in (+)">
-                +
-              </Button>
+              <button
+                onClick={zoomIn}
+                disabled={zoom >= MAX_ZOOM}
+                className="p-1.5 rounded hover:bg-bg-hover text-fg-muted hover:text-fg-default disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                title="Zoom in (+)"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="11" cy="11" r="8"/>
+                  <path d="M21 21l-4.35-4.35M11 8v6M8 11h6"/>
+                </svg>
+              </button>
               {zoom > 1 && (
-                <Button variant="ghost" size="sm" onClick={resetZoom} title="Reset zoom (0)">
+                <button
+                  onClick={resetZoom}
+                  className="ml-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-fg-muted hover:text-fg-default hover:bg-bg-hover transition-colors"
+                  title="Reset zoom (0)"
+                >
                   1:1
-                </Button>
+                </button>
               )}
             </div>
           </div>
@@ -653,15 +692,25 @@ export function VideoPlayer(props: VideoPlayerProps) {
         <div className="relative aspect-video flex items-center justify-center bg-bg-base">
           <Spinner size="lg" />
         </div>
-        <div className="p-4">
-          <div className="h-8 bg-bg-overlay rounded mb-4" />
-          <div className="h-4 bg-bg-overlay rounded w-1/3 mb-4" />
-          <div className="flex gap-2">
-            <div className="h-8 w-12 bg-bg-overlay rounded" />
-            <div className="h-8 w-12 bg-bg-overlay rounded" />
-            <div className="h-8 w-16 bg-bg-overlay rounded" />
-            <div className="h-8 w-12 bg-bg-overlay rounded" />
-            <div className="h-8 w-12 bg-bg-overlay rounded" />
+        <div className="p-4 space-y-3">
+          <div className="h-12 bg-bg-overlay rounded-md" />
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <div className="w-8 h-8 bg-bg-overlay rounded" />
+              <div className="w-8 h-6 bg-bg-overlay rounded" />
+              <div className="w-8 h-8 bg-bg-overlay rounded-full" />
+              <div className="w-8 h-6 bg-bg-overlay rounded" />
+              <div className="w-8 h-8 bg-bg-overlay rounded" />
+            </div>
+            <div className="flex gap-2">
+              <div className="w-24 h-4 bg-bg-overlay rounded" />
+              <div className="w-32 h-4 bg-bg-overlay rounded" />
+            </div>
+            <div className="flex gap-1">
+              <div className="w-8 h-8 bg-bg-overlay rounded" />
+              <div className="w-8 h-8 bg-bg-overlay rounded" />
+              <div className="w-8 h-8 bg-bg-overlay rounded" />
+            </div>
           </div>
         </div>
       </div>
