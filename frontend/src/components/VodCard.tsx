@@ -124,7 +124,7 @@ export function VodCard({ vod, onDownloadComplete, onDelete }: VodCardProps) {
   const totalProgress = progress ? Math.round((progress.videoPercent + progress.chatPercent) / 2) : 0;
 
   return (
-    <div className="group bg-bg-surface rounded-lg border border-border-default hover:border-border-strong transition-colors overflow-hidden">
+    <div className="group h-full flex flex-col bg-bg-surface rounded-lg border border-border-default hover:border-border-strong transition-colors overflow-hidden">
       <div className="relative aspect-video bg-bg-overlay">
         <img
           src={vod.thumbnail_url}
@@ -145,12 +145,12 @@ export function VodCard({ vod, onDownloadComplete, onDelete }: VodCardProps) {
         </div>
       </div>
 
-      <div className="p-3">
+      <div className="p-3 flex flex-col flex-1">
         <h3 className="text-[13px] font-medium text-fg-default line-clamp-2 leading-snug mb-2" title={vod.title}>
           {vod.title}
         </h3>
 
-        <div className="flex items-center gap-2 text-[11px] text-fg-muted mb-3">
+        <div className="flex items-center gap-2 text-[11px] text-fg-muted">
           <span className="font-medium text-fg-secondary">{vod.channel_login}</span>
           <span className="text-fg-faint">·</span>
           <span className="tabular-nums">{formatViewCount(vod.view_count)} views</span>
@@ -158,6 +158,7 @@ export function VodCard({ vod, onDownloadComplete, onDelete }: VodCardProps) {
           <span>{formatDate(vod.created_at)}</span>
         </div>
 
+        <div className="mt-auto pt-3">
         {displayError && (
           <p className="text-[11px] text-error mb-2 bg-error-muted px-2 py-1 rounded">{displayError}</p>
         )}
@@ -222,6 +223,7 @@ export function VodCard({ vod, onDownloadComplete, onDelete }: VodCardProps) {
             Download
           </button>
         )}
+        </div>
       </div>
 
       <ConfirmDialog
