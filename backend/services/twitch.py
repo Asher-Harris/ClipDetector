@@ -21,6 +21,18 @@ def parse_duration_to_seconds(duration: str) -> int | None:
 
 
 @dataclass
+class TwitchClip:
+    id: str
+    video_id: str | None
+    vod_offset: float | None
+    view_count: int
+    duration: float
+    created_at: str
+    title: str
+    creator_name: str
+
+
+@dataclass
 class TwitchChannel:
     id: str
     login: str
@@ -101,6 +113,41 @@ class TwitchClient:
             display_name=user["display_name"],
             profile_image_url=user.get("profile_image_url"),
         )
+
+    async def get_clips(
+        self, broadcaster_id: str, started_at: str, ended_at: str
+    ) -> list[TwitchClip]:
+        clips = []
+        params = {
+            "broadcaster_id": broadcaster_id,
+            "started_at": started_at,
+            "ended_at": ended_at,
+            "first": 100,
+        }
+
+        while True:
+            data = await self._request("/clips", params)
+            for item in data.get("data", []):
+                clips.append(TwitchClip(
+                    id=item["id"],
+                    video_id=item.get("video_id"),
+                    vod_offset=item.get("vod_offset"),
+                    view_count=item.get("view_count", 0),
+                    duration=item.get("duration", 30),
+                    created_at=item.get("created_at", ""),
+                    title=item.get("title", ""),
+                    creator_name=item.get("creator_name", ""),
+                ))
+
+            cursor = data.get("pagination", {}).get("cursor")
+            if not cursor:
+                break
+            params["after"] = cursor
+
+            if len(clips) >= 1000:
+                break
+
+        return clips
 
     async def get_channel_vods(
         self, user_id: str, limit: int = 20

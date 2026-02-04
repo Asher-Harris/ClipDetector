@@ -77,13 +77,15 @@ export type ClipStatusMap = {
 };
 
 // Signal type for badge rendering
-export type SignalType = "audio" | "chat" | "speech_keyword" | "speech_rate";
+export type SignalType = "audio" | "chat" | "speech_keyword" | "speech_rate" | "clip_popular" | "clip_density";
 
 export const SIGNAL_LABELS: Record<SignalType, string> = {
   audio: "Audio",
   chat: "Chat",
   speech_keyword: "Speech",
   speech_rate: "Fast Talk",
+  clip_popular: "Clip",
+  clip_density: "Clip Density",
 };
 
 export const SIGNAL_COLORS: Record<SignalType, string> = {
@@ -91,6 +93,8 @@ export const SIGNAL_COLORS: Record<SignalType, string> = {
   chat: "bg-purple-500",
   speech_keyword: "bg-green-500",
   speech_rate: "bg-yellow-500",
+  clip_popular: "bg-red-500",
+  clip_density: "bg-orange-500",
 };
 
 // Generate deterministic clip ID
@@ -135,6 +139,8 @@ export type Profile = {
   chat_threshold: number;
   speech_keyword_weight?: number;
   speech_rate_weight?: number;
+  clip_popular_weight?: number;
+  clip_density_weight?: number;
 };
 
 export type ProfileCreateRequest = {
@@ -145,6 +151,8 @@ export type ProfileCreateRequest = {
   chat_threshold: number;
   speech_keyword_weight?: number;
   speech_rate_weight?: number;
+  clip_popular_weight?: number;
+  clip_density_weight?: number;
 };
 
 export type ProfileUpdateRequest = Partial<ProfileCreateRequest>;
@@ -157,6 +165,8 @@ export const DEFAULT_PROFILE_VALUES: ProfileCreateRequest = {
   chat_threshold: 3.0,
   speech_keyword_weight: 1.5,
   speech_rate_weight: 1.0,
+  clip_popular_weight: 3.5,
+  clip_density_weight: 2.5,
 };
 
 export type ProfileParamMeta = {
@@ -211,6 +221,22 @@ export const PROFILE_PARAMS: Record<
     max: 10,
     step: 0.1,
     category: "thresholds",
+  },
+  clip_popular_weight: {
+    label: "Clip Popular Weight",
+    description: "Weight for high-view Twitch clips",
+    min: 0,
+    max: 5,
+    step: 0.1,
+    category: "weights",
+  },
+  clip_density_weight: {
+    label: "Clip Density Weight",
+    description: "Weight for clusters of Twitch clips",
+    min: 0,
+    max: 5,
+    step: 0.1,
+    category: "weights",
   },
   chat_threshold: {
     label: "Chat Threshold",

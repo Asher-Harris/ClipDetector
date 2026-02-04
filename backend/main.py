@@ -4,7 +4,7 @@ import os
 import re
 import subprocess
 from asyncio import Semaphore
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
 
@@ -38,6 +38,7 @@ from analyzers.lipsync import (
     AvatarNotFoundError,
     MissingMouthShapeError,
 )
+from analyzers.clips import analyze_clips, ClipsConfig
 from services.twitch import TwitchClient, VodStorage
 from services.downloader import TwitchDownloader
 
@@ -102,6 +103,8 @@ class ProfileConfig(BaseModel):
     audio_intensity_cap: float = Field(default=2.5, ge=1.0, le=10.0)
     synergy_bonus: float = Field(default=0.75, ge=0.0, le=2.0)
     min_score: float = Field(default=3.0, ge=0.0, le=50.0)
+    clip_popular_weight: float = Field(default=3.5, ge=0.0, le=5.0)
+    clip_density_weight: float = Field(default=2.5, ge=0.0, le=5.0)
 
 
 class ProfileCreateRequest(BaseModel):
@@ -113,6 +116,8 @@ class ProfileCreateRequest(BaseModel):
     audio_intensity_cap: float = Field(default=2.5, ge=1.0, le=10.0)
     synergy_bonus: float = Field(default=0.75, ge=0.0, le=2.0)
     min_score: float = Field(default=3.0, ge=0.0, le=50.0)
+    clip_popular_weight: float = Field(default=3.5, ge=0.0, le=5.0)
+    clip_density_weight: float = Field(default=2.5, ge=0.0, le=5.0)
 
 
 class ProfileUpdateRequest(BaseModel):
@@ -124,6 +129,8 @@ class ProfileUpdateRequest(BaseModel):
     audio_intensity_cap: float | None = Field(default=None, ge=1.0, le=10.0)
     synergy_bonus: float | None = Field(default=None, ge=0.0, le=2.0)
     min_score: float | None = Field(default=None, ge=0.0, le=50.0)
+    clip_popular_weight: float | None = Field(default=None, ge=0.0, le=5.0)
+    clip_density_weight: float | None = Field(default=None, ge=0.0, le=5.0)
 
 
 def slugify(name: str) -> str:
@@ -1929,6 +1936,9 @@ class VodAnalyzeRequest(BaseModel):
     speech_language: str = Field(default="en")
     speech_keyword_weight: float | None = Field(default=None, ge=0.0, le=5.0)
     speech_rate_weight: float | None = Field(default=None, ge=0.0, le=5.0)
+    include_clips: bool = Field(default=True)
+    clip_popular_weight: float | None = Field(default=None, ge=0.0, le=5.0)
+    clip_density_weight: float | None = Field(default=None, ge=0.0, le=5.0)
 
 
 @app.post("/api/vods/{vod_id}/analyze")
@@ -1985,6 +1995,8 @@ async def analyze_vod_by_id(vod_id: str, request: VodAnalyzeRequest):
         min_score=request.min_score or 3.0,
         speech_keyword_weight=request.speech_keyword_weight or 1.5,
         speech_rate_weight=request.speech_rate_weight or 1.0,
+        clip_popular_weight=request.clip_popular_weight or 3.5,
+        clip_density_weight=request.clip_density_weight or 2.5,
     )
 
     speech_config = None
@@ -1993,6 +2005,47 @@ async def analyze_vod_by_id(vod_id: str, request: VodAnalyzeRequest):
             model_size=request.speech_model_size,
             language=request.speech_language,
         )
+
+    clips_moments = None
+    if request.include_clips:
+        try:
+            twitch_config = get_twitch_config()
+            channel_login = vod.get("channel_login")
+            if twitch_config and channel_login:
+                data = storage.load()
+                channels = data.get("channels", {})
+                channel_info = channels.get(channel_login, {})
+                broadcaster_id = channel_info.get("id")
+                if broadcaster_id:
+                    created_at = vod.get("created_at", "")
+                    duration_seconds = vod.get("duration_seconds") or 0
+                    if created_at and duration_seconds:
+                        started_at = created_at
+                        start_dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+                        end_dt = start_dt + timedelta(seconds=duration_seconds + 3600)
+                        ended_at = end_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+                        client = TwitchClient(
+                            twitch_config["client_id"],
+                            twitch_config["client_secret"],
+                        )
+                        twitch_clips = await client.get_clips(
+                            broadcaster_id, started_at, ended_at
+                        )
+                        clips_as_dicts = [
+                            {
+                                "video_id": c.video_id,
+                                "vod_offset": c.vod_offset,
+                                "view_count": c.view_count,
+                                "duration": c.duration,
+                                "title": c.title,
+                                "creator_name": c.creator_name,
+                            }
+                            for c in twitch_clips
+                        ]
+
+                        clips_moments = analyze_clips(clips_as_dicts, vod_id)
+        except Exception:
+            clips_moments = None
 
     try:
         candidates = analyze_full(
@@ -2003,6 +2056,7 @@ async def analyze_vod_by_id(vod_id: str, request: VodAnalyzeRequest):
             fusion_config=fusion_config,
             include_speech=request.include_speech,
             speech_config=speech_config,
+            clips_moments=clips_moments,
         )
     except json.JSONDecodeError as e:
         raise HTTPException(status_code=400, detail=f"Invalid chat JSON file: {e}")
@@ -2041,6 +2095,9 @@ async def analyze_vod_by_id(vod_id: str, request: VodAnalyzeRequest):
             "speech_language": request.speech_language if request.include_speech else None,
             "speech_keyword_weight": fusion_config.speech_keyword_weight if request.include_speech else None,
             "speech_rate_weight": fusion_config.speech_rate_weight if request.include_speech else None,
+            "include_clips": request.include_clips,
+            "clip_popular_weight": fusion_config.clip_popular_weight if clips_moments else None,
+            "clip_density_weight": fusion_config.clip_density_weight if clips_moments else None,
             "vod_id": vod_id,
             "vod_title": vod.get("title"),
             "channel_login": vod.get("channel_login"),

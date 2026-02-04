@@ -80,6 +80,8 @@ export type FullAnalysisRequest = {
   speech_language?: string;
   speech_keyword_weight?: number;
   speech_rate_weight?: number;
+  clip_popular_weight?: number;
+  clip_density_weight?: number;
 };
 
 export async function runFullAnalysis(
@@ -354,6 +356,9 @@ export type VodAnalyzeRequest = {
   speech_language?: string;
   speech_keyword_weight?: number;
   speech_rate_weight?: number;
+  include_clips?: boolean;
+  clip_popular_weight?: number;
+  clip_density_weight?: number;
 };
 
 export async function analyzeVodById(

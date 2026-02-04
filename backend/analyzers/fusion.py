@@ -4,6 +4,7 @@ from typing import Callable
 
 from .audio import AudioSpike, analyze_audio, AnalysisConfig as AudioConfig
 from .chat import ChatMoment, analyze_chat, ChatConfig
+from .clips import ClipsMoment
 from .speech import SpeechMoment, analyze_speech, SpeechConfig
 
 
@@ -38,6 +39,8 @@ class FusionConfig:
     min_score: float = 3.0           # minimum score to include a candidate
     speech_keyword_weight: float = 1.5   # keyword_match moments
     speech_rate_weight: float = 1.0      # speech_rate_spike moments
+    clip_popular_weight: float = 3.5
+    clip_density_weight: float = 2.5
 
 
 def normalize_signals(
@@ -45,6 +48,7 @@ def normalize_signals(
     chat_moments: list[ChatMoment],
     config: FusionConfig,
     speech_moments: list[SpeechMoment] | None = None,
+    clips_moments: list[ClipsMoment] | None = None,
 ) -> list[Signal]:
     """Convert all analyzer outputs to normalized signals."""
     signals = []
@@ -73,6 +77,22 @@ def normalize_signals(
             else:
                 weight = config.speech_rate_weight
                 signal_type = "speech_rate"
+
+            signals.append(Signal(
+                timestamp=moment.timestamp,
+                intensity=moment.intensity,
+                signal_type=signal_type,
+                weight=weight,
+            ))
+
+    if clips_moments:
+        for moment in clips_moments:
+            if moment.moment_type == "clip_popular":
+                weight = config.clip_popular_weight
+                signal_type = "clip_popular"
+            else:
+                weight = config.clip_density_weight
+                signal_type = "clip_density"
 
             signals.append(Signal(
                 timestamp=moment.timestamp,
@@ -155,11 +175,13 @@ def deduplicate_candidates(
     result = []
 
     for candidate in sorted_candidates:
-        # Check if this candidate is too close to any already-kept candidate
         too_close = False
         for kept in result:
             if abs(candidate.timestamp - kept.timestamp) <= window:
                 too_close = True
+                for sig in candidate.signals:
+                    if sig not in kept.signals:
+                        kept.signals.append(sig)
                 break
 
         if not too_close:
@@ -175,6 +197,7 @@ def fuse_signals(
     chat_moments: list[ChatMoment],
     config: FusionConfig | None = None,
     speech_moments: list[SpeechMoment] | None = None,
+    clips_moments: list[ClipsMoment] | None = None,
 ) -> list[ClipCandidate]:
     """Main fusion function: combine signals and produce ranked clip candidates.
 
@@ -183,6 +206,7 @@ def fuse_signals(
         chat_moments: Results from chat analyzer
         config: Fusion configuration
         speech_moments: Optional results from speech analyzer
+        clips_moments: Optional results from clips analyzer
 
     Returns:
         List of clip candidates sorted by score descending
@@ -191,7 +215,7 @@ def fuse_signals(
         config = FusionConfig()
 
     # Normalize all signals
-    signals = normalize_signals(audio_spikes, chat_moments, config, speech_moments)
+    signals = normalize_signals(audio_spikes, chat_moments, config, speech_moments, clips_moments)
 
     if not signals:
         return []
@@ -237,8 +261,9 @@ def analyze_full(
     include_speech: bool = False,
     speech_config: SpeechConfig | None = None,
     speech_progress_callback: Callable[[str, int, str], None] | None = None,
+    clips_moments: list[ClipsMoment] | None = None,
 ) -> list[ClipCandidate]:
-    """Full analysis pipeline: audio + chat + optional speech + fusion.
+    """Full analysis pipeline: audio + chat + optional speech + optional clips + fusion.
 
     Args:
         video_path: Path to the video file
@@ -249,6 +274,7 @@ def analyze_full(
         include_speech: Whether to include speech analysis
         speech_config: Speech analysis configuration
         speech_progress_callback: Optional callback for speech analysis progress
+        clips_moments: Optional pre-computed clips analysis moments
 
     Returns:
         Ranked list of clip candidates
@@ -278,6 +304,6 @@ def analyze_full(
             speech_progress_callback
         )
 
-    candidates = fuse_signals(audio_spikes, chat_moments, fusion_config, speech_moments)
+    candidates = fuse_signals(audio_spikes, chat_moments, fusion_config, speech_moments, clips_moments)
 
     return candidates

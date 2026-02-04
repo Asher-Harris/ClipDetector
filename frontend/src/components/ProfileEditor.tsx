@@ -34,6 +34,8 @@ export function ProfileEditor({
         chat_threshold: profile.chat_threshold,
         speech_keyword_weight: profile.speech_keyword_weight ?? DEFAULT_PROFILE_VALUES.speech_keyword_weight,
         speech_rate_weight: profile.speech_rate_weight ?? DEFAULT_PROFILE_VALUES.speech_rate_weight,
+        clip_popular_weight: profile.clip_popular_weight ?? DEFAULT_PROFILE_VALUES.clip_popular_weight,
+        clip_density_weight: profile.clip_density_weight ?? DEFAULT_PROFILE_VALUES.clip_density_weight,
       });
     } else {
       setFormData(DEFAULT_PROFILE_VALUES);

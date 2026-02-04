@@ -88,6 +88,8 @@ export default function Home() {
       speech_model_size: speechEnabled ? speechModelSize : undefined,
       speech_keyword_weight: profile?.speech_keyword_weight,
       speech_rate_weight: profile?.speech_rate_weight,
+      clip_popular_weight: profile?.clip_popular_weight,
+      clip_density_weight: profile?.clip_density_weight,
     };
 
     try {
