@@ -122,7 +122,7 @@ export default function ReviewPage() {
 
   return (
     <div className="min-h-screen bg-bg-base text-fg-default">
-      <AppHeader currentPage="review" showReviewLink>
+      <AppHeader currentPage="review">
         {(displayTitle || displayChannel) && (
           <div className="hidden md:flex items-center gap-2 ml-4 text-sm">
             {displayChannel && (

@@ -7,6 +7,7 @@ import type {
   ProfileCreateRequest,
   ProfileUpdateRequest,
   VodListResponse,
+  VodClipsResponse,
   DownloadProgress,
   ActiveDownloadsResponse,
   TwitchVod,
@@ -288,6 +289,20 @@ export async function listDownloadedVods(): Promise<DownloadedVodsResponse> {
 
 export async function getVodDetail(vodId: string): Promise<TwitchVod> {
   return apiRequest(`/api/vods/${vodId}`);
+}
+
+export async function getVodClips(vodId: string): Promise<VodClipsResponse> {
+  return apiRequest(`/api/twitch/vods/${vodId}/clips`);
+}
+
+export async function downloadTwitchClip(
+  clipId: string,
+  channelLogin: string
+): Promise<{ success: boolean; filename: string; file_size: number; already_existed: boolean }> {
+  return apiRequest(`/api/twitch/clips/${clipId}/download`, {
+    method: "POST",
+    body: JSON.stringify({ channel_login: channelLogin }),
+  });
 }
 
 export type VodAnalyzeRequest = {

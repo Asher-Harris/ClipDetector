@@ -27,7 +27,7 @@ from analyzers.speech import (
     TranscriptSegment as SpeechTranscriptSegment,
 )
 from analyzers.clips import analyze_clips, ClipsConfig
-from services.twitch import TwitchClient, VodStorage
+from services.twitch import TwitchClient, VodStorage, parse_duration_to_seconds
 from services.downloader import TwitchDownloader
 
 app = FastAPI(title="ClipDetector API", version="0.1.0")
@@ -1507,6 +1507,123 @@ async def get_active_downloads():
             }
             for vod_id, info in active_downloads.items()
         }
+    }
+
+
+# ============ Twitch Clip Endpoints ============
+
+
+class ClipDownloadRequest(BaseModel):
+    channel_login: str
+
+
+@app.get("/api/twitch/vods/{vod_id}/clips")
+async def list_vod_clips(vod_id: str):
+    twitch_config = get_twitch_config()
+    if not twitch_config:
+        raise HTTPException(status_code=400, detail="Twitch credentials not configured")
+
+    storage = VodStorage(VODS_STORAGE_PATH)
+    data = storage.load()
+    channels = data.get("channels", {})
+
+    vod = None
+    for v in data.get("vods", []):
+        if v["id"] == vod_id:
+            vod = v
+            break
+
+    if not vod:
+        raise HTTPException(status_code=404, detail="VOD not found")
+
+    channel_login = vod.get("channel_login", "")
+    channel_info = channels.get(channel_login, {})
+    broadcaster_id = channel_info.get("id")
+    if not broadcaster_id:
+        raise HTTPException(status_code=400, detail="Broadcaster ID not found for this VOD's channel")
+
+    created_at = vod.get("created_at", "")
+    duration_seconds = parse_duration_to_seconds(vod.get("duration", "")) or 0
+
+    if not created_at or not duration_seconds:
+        raise HTTPException(status_code=400, detail="VOD missing created_at or duration")
+
+    start_dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+    end_dt = start_dt + timedelta(seconds=duration_seconds + 3600)
+    started_at = created_at
+    ended_at = end_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    client = TwitchClient(
+        twitch_config["client_id"],
+        twitch_config["client_secret"],
+    )
+    twitch_clips = await client.get_clips(broadcaster_id, started_at, ended_at)
+
+    clips_dir = DATA_DIR / "clips"
+    clips_dir.mkdir(parents=True, exist_ok=True)
+
+    clips = []
+    for c in sorted(twitch_clips, key=lambda x: x.view_count, reverse=True):
+        filename = f"{channel_login}_{c.id}.mp4"
+        downloaded = (clips_dir / filename).exists()
+        clips.append({
+            "id": c.id,
+            "video_id": c.video_id,
+            "vod_offset": c.vod_offset,
+            "view_count": c.view_count,
+            "duration": c.duration,
+            "created_at": c.created_at,
+            "title": c.title,
+            "creator_name": c.creator_name,
+            "thumbnail_url": c.thumbnail_url,
+            "downloaded": downloaded,
+            "filename": filename if downloaded else None,
+        })
+
+    return {
+        "vod_id": vod_id,
+        "clips": clips,
+        "total": len(clips),
+    }
+
+
+@app.post("/api/twitch/clips/{clip_id}/download")
+async def download_twitch_clip(clip_id: str, request: ClipDownloadRequest):
+    twitch_config = get_twitch_config()
+    cli_path = twitch_config.get("cli_path", "TwitchDownloaderCLI") if twitch_config else "TwitchDownloaderCLI"
+
+    downloader = TwitchDownloader(cli_path)
+    if not downloader.is_available():
+        raise HTTPException(
+            status_code=503,
+            detail="TwitchDownloaderCLI not found or not executable",
+        )
+
+    clips_dir = DATA_DIR / "clips"
+    clips_dir.mkdir(parents=True, exist_ok=True)
+
+    filename = f"{request.channel_login}_{clip_id}.mp4"
+    output_path = clips_dir / filename
+
+    if output_path.exists():
+        return {
+            "success": True,
+            "filename": filename,
+            "file_size": output_path.stat().st_size,
+            "already_existed": True,
+        }
+
+    success = await downloader.download_clip(clip_id, output_path)
+    if not success:
+        if output_path.exists():
+            output_path.unlink()
+        raise HTTPException(status_code=500, detail="Clip download failed")
+
+    return {
+        "success": True,
+        "filename": filename,
+        "file_size": output_path.stat().st_size,
+        "already_existed": False,
     }
 
 

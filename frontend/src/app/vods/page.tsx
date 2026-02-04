@@ -5,7 +5,6 @@ import { AppHeader, Spinner } from "@/components/ui";
 import { VodCard } from "@/components/VodCard";
 import { refreshTwitchVods, type ApiError } from "@/lib/api";
 import { useToast } from "@/context/ToastContext";
-import { useApp } from "@/context/AppContext";
 import type { TwitchVod, TwitchChannel } from "@/lib/types";
 
 function FolderIcon({ className }: { className?: string }) {
@@ -18,7 +17,6 @@ function FolderIcon({ className }: { className?: string }) {
 
 export default function VodsPage() {
   const { addToast } = useToast();
-  const { analysisResult } = useApp();
   const [isLoading, setIsLoading] = useState(true);
   const [channels, setChannels] = useState<TwitchChannel[]>([]);
   const [vods, setVods] = useState<TwitchVod[]>([]);
@@ -49,7 +47,7 @@ export default function VodsPage() {
 
   return (
     <div className="min-h-screen bg-bg-base">
-      <AppHeader currentPage="vods" showReviewLink={!!analysisResult} />
+      <AppHeader currentPage="vods" />
 
       <main className="max-w-[1800px] mx-auto px-6 py-6">
         <div className="flex items-center justify-between mb-6">

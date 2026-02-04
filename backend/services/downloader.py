@@ -114,6 +114,34 @@ class TwitchDownloader:
             if process in self.active_processes:
                 self.active_processes.remove(process)
 
+    async def download_clip(
+        self,
+        clip_id: str,
+        output_path: Path,
+        on_progress: Callable[[int], None] | None = None,
+    ) -> bool:
+        cmd = [
+            self.cli_path,
+            "clipdownload",
+            "--id", clip_id,
+            "-o", str(output_path),
+        ]
+
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        self.active_processes.append(process)
+
+        try:
+            await self._read_output_with_cr(process, on_progress)
+            await process.wait()
+            return process.returncode == 0
+        finally:
+            if process in self.active_processes:
+                self.active_processes.remove(process)
+
     def cancel(self) -> bool:
         cancelled = False
         for process in self.active_processes:

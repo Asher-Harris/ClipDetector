@@ -169,7 +169,7 @@ export default function Home() {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-bg-base text-fg-default">
-        <AppHeader currentPage="analyze" showReviewLink={!!analysisResult} />
+        <AppHeader currentPage="analyze"  />
         <main className="max-w-2xl mx-auto px-6 py-16">
           <div className="flex flex-col items-center justify-center gap-4">
             <Spinner size="lg" />
@@ -183,7 +183,7 @@ export default function Home() {
   if (!isHealthy) {
     return (
       <div className="min-h-screen bg-bg-base text-fg-default">
-        <AppHeader currentPage="analyze" showReviewLink={!!analysisResult} />
+        <AppHeader currentPage="analyze"  />
         <main className="max-w-2xl mx-auto px-6 py-16">
           <div className="text-center">
             <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-error-muted mb-4">
@@ -207,7 +207,7 @@ export default function Home() {
   if (hasNoVods) {
     return (
       <div className="min-h-screen bg-bg-base text-fg-default">
-        <AppHeader currentPage="analyze" showReviewLink={!!analysisResult} />
+        <AppHeader currentPage="analyze"  />
         <main className="max-w-2xl mx-auto px-6 py-16">
           <div className="text-center mb-8">
             <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-bg-surface border border-border-default mb-4">
@@ -230,7 +230,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-bg-base text-fg-default">
-      <AppHeader currentPage="analyze" showReviewLink={!!analysisResult} />
+      <AppHeader currentPage="analyze"  />
 
       <main className="max-w-2xl mx-auto px-6 py-8">
         <div className="mb-8">

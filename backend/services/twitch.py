@@ -31,6 +31,7 @@ class TwitchClip:
     created_at: str
     title: str
     creator_name: str
+    thumbnail_url: str | None = None
 
 
 @dataclass
@@ -119,6 +120,7 @@ class TwitchClient:
         self, broadcaster_id: str, started_at: str, ended_at: str
     ) -> list[TwitchClip]:
         clips = []
+        seen_ids: set[str] = set()
         params = {
             "broadcaster_id": broadcaster_id,
             "started_at": started_at,
@@ -129,8 +131,12 @@ class TwitchClient:
         while True:
             data = await self._request("/clips", params)
             for item in data.get("data", []):
+                clip_id = item["id"]
+                if clip_id in seen_ids:
+                    continue
+                seen_ids.add(clip_id)
                 clips.append(TwitchClip(
-                    id=item["id"],
+                    id=clip_id,
                     video_id=item.get("video_id"),
                     vod_offset=item.get("vod_offset"),
                     view_count=item.get("view_count", 0),
@@ -138,6 +144,7 @@ class TwitchClient:
                     created_at=item.get("created_at", ""),
                     title=item.get("title", ""),
                     creator_name=item.get("creator_name", ""),
+                    thumbnail_url=item.get("thumbnail_url"),
                 ))
 
             cursor = data.get("pagination", {}).get("cursor")

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import Link from "next/link";
 import type { TwitchVod } from "@/lib/types";
 import { deleteVod, type ApiError } from "@/lib/api";
 import { ConfirmDialog } from "@/components/ui";
@@ -125,25 +126,27 @@ export function VodCard({ vod, onDownloadComplete, onDelete }: VodCardProps) {
 
   return (
     <div className="group h-full flex flex-col bg-bg-surface rounded-lg border border-border-default hover:border-border-strong transition-colors overflow-hidden">
-      <div className="relative aspect-video bg-bg-overlay">
-        <img
-          src={vod.thumbnail_url}
-          alt=""
-          className="w-full h-full object-cover"
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
-        <div className="absolute bottom-2 left-2 right-2 flex items-end justify-between">
-          <span className="text-[11px] font-medium text-white/90 bg-black/50 px-1.5 py-0.5 rounded">
-            {formatDuration(vod.duration)}
-          </span>
-          {vod.downloaded && (
-            <span className="flex items-center gap-1 text-[11px] font-medium text-success bg-black/50 px-1.5 py-0.5 rounded">
-              <CheckIcon className="w-3 h-3" />
-              Ready
+      <Link href={`/vods/${vod.id}/clips`} className="block">
+        <div className="relative aspect-video bg-bg-overlay">
+          <img
+            src={vod.thumbnail_url}
+            alt=""
+            className="w-full h-full object-cover"
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+          <div className="absolute bottom-2 left-2 right-2 flex items-end justify-between">
+            <span className="text-[11px] font-medium text-white/90 bg-black/50 px-1.5 py-0.5 rounded">
+              {formatDuration(vod.duration)}
             </span>
-          )}
+            {vod.downloaded && (
+              <span className="flex items-center gap-1 text-[11px] font-medium text-success bg-black/50 px-1.5 py-0.5 rounded">
+                <CheckIcon className="w-3 h-3" />
+                Ready
+              </span>
+            )}
+          </div>
         </div>
-      </div>
+      </Link>
 
       <div className="p-3 flex flex-col flex-1">
         <h3 className="text-[13px] font-medium text-fg-default line-clamp-2 leading-snug mb-2" title={vod.title}>

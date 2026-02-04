@@ -260,6 +260,26 @@ export type VodListResponse = {
   errors?: VodRefreshError[];
 };
 
+export type TwitchClip = {
+  id: string;
+  video_id: string | null;
+  vod_offset: number | null;
+  view_count: number;
+  duration: number;
+  created_at: string;
+  title: string;
+  creator_name: string;
+  thumbnail_url: string | null;
+  downloaded: boolean;
+  filename: string | null;
+};
+
+export type VodClipsResponse = {
+  vod_id: string;
+  clips: TwitchClip[];
+  total: number;
+};
+
 export type DownloadProgress = {
   stage: "queued" | "video" | "chat";
   percent: number;
