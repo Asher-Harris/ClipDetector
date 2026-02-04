@@ -5,10 +5,7 @@ import re
 import subprocess
 from asyncio import Semaphore
 from datetime import datetime, timedelta, timezone
-from enum import Enum
 from pathlib import Path
-
-import httpx
 
 from dotenv import load_dotenv
 
@@ -29,15 +26,6 @@ from analyzers.speech import (
     SpeechMoment,
     TranscriptSegment as SpeechTranscriptSegment,
 )
-from analyzers.lipsync import (
-    generate_lipsync_video,
-    validate_avatar,
-    get_available_avatars,
-    LipsyncConfig,
-    RhubarbNotFoundError,
-    AvatarNotFoundError,
-    MissingMouthShapeError,
-)
 from analyzers.clips import analyze_clips, ClipsConfig
 from services.twitch import TwitchClient, VodStorage
 from services.downloader import TwitchDownloader
@@ -53,26 +41,14 @@ download_semaphore = Semaphore(1)
 
 CONFIG_PATH = Path(__file__).parent.parent / "config.json"
 
-DEFAULT_CONFIG = {
-    "features": {
-        "speech_analysis": True
-    }
-}
-
-
 def load_config() -> dict:
     if CONFIG_PATH.exists():
         try:
             with open(CONFIG_PATH) as f:
                 return json.load(f)
         except (json.JSONDecodeError, IOError):
-            return DEFAULT_CONFIG
-    return DEFAULT_CONFIG
-
-
-def is_feature_enabled(feature: str) -> bool:
-    config = load_config()
-    return config.get("features", {}).get(feature, True)
+            return {}
+    return {}
 
 app.add_middleware(
     CORSMiddleware,
@@ -85,7 +61,6 @@ app.add_middleware(
 # Base path for data files
 DATA_DIR = Path(__file__).parent.parent / "data"
 PROFILES_DIR = DATA_DIR / "profiles"
-AVATARS_DIR = DATA_DIR / "avatars"
 
 
 # ============ Profile Models ============
@@ -298,11 +273,6 @@ class ChatAnalysisResponse(BaseModel):
 @app.get("/health")
 async def health_check():
     return {"status": "healthy", "service": "clipdetector-api"}
-
-
-@app.get("/api/config")
-async def get_config():
-    return load_config()
 
 
 # ============ Profile Endpoints ============
@@ -579,12 +549,6 @@ async def analyze_speech_endpoint(request: SpeechAnalysisRequest):
     The file_path should be relative to the /data folder.
     Example: "vods/my_stream.mp4"
     """
-    if not is_feature_enabled("speech_analysis"):
-        raise HTTPException(
-            status_code=403,
-            detail="Speech analysis is disabled in config"
-        )
-
     try:
         video_path = resolve_safe_path(request.file_path, DATA_DIR)
     except ValueError:
@@ -651,11 +615,6 @@ async def analyze_speech_stream(
     - model_size: Whisper model size (tiny, base, small, medium, large)
     - language: Language code (e.g., 'en') or empty for auto-detection
     """
-    if not is_feature_enabled("speech_analysis"):
-        async def error_stream():
-            yield f"event: error\ndata: {json.dumps({'error': 'Speech analysis is disabled in config'})}\n\n"
-        return StreamingResponse(error_stream(), media_type="text/event-stream")
-
     try:
         video_path = resolve_safe_path(file_path, DATA_DIR)
     except ValueError:
@@ -830,12 +789,6 @@ async def analyze_full_endpoint(request: FullAnalysisRequest):
     File paths should be relative to the /data folder.
     Example: video_path="vods/my_stream.mp4", chat_path="chats/my_stream_chat.json"
     """
-    if request.include_speech and not is_feature_enabled("speech_analysis"):
-        raise HTTPException(
-            status_code=403,
-            detail="Speech analysis is disabled in config"
-        )
-
     # Resolve and validate paths
     try:
         video_path = resolve_safe_path(request.video_path, DATA_DIR)
@@ -945,11 +898,6 @@ async def analyze_full_stream(request: FullAnalysisRequest):
     Use this endpoint when speech analysis is enabled to get real-time progress updates.
     Returns the same response as /api/analyze/full but streams progress events.
     """
-    if request.include_speech and not is_feature_enabled("speech_analysis"):
-        async def error_stream():
-            yield f"event: error\ndata: {json.dumps({'error': 'Speech analysis is disabled in config'})}\n\n"
-        return StreamingResponse(error_stream(), media_type="text/event-stream")
-
     import asyncio
     import queue
     import threading
@@ -1204,323 +1152,6 @@ async def export_clip(request: ClipExportRequest):
         output_path=f"clips/{safe_filename}",
         duration=duration,
         file_size=file_size,
-    )
-
-
-class TTSVoice(str, Enum):
-    BRITISH_RYAN = "en-GB-RyanNeural"
-    AMERICAN_ANDREW = "en-US-AndrewNeural"
-
-
-class TTSPreviewRequest(BaseModel):
-    text: str = Field(..., min_length=1, max_length=500)
-    voice: TTSVoice = Field(default=TTSVoice.BRITISH_RYAN)
-    speed: float = Field(default=1.0, ge=0.5, le=2.0)
-
-
-class TTSGenerateRequest(TTSPreviewRequest):
-    output_filename: str = Field(..., description="Output filename (without path)")
-    avatar: str | None = Field(default=None, description="Optional avatar for lip-sync video")
-
-
-class TTSGenerateResponse(BaseModel):
-    success: bool
-    output_path: str | None = None
-    duration_seconds: float
-    file_size: int
-    video_path: str | None = None
-
-
-class TTSAnimateRequest(BaseModel):
-    text: str = Field(..., min_length=1, max_length=500)
-    voice: TTSVoice = Field(default=TTSVoice.BRITISH_RYAN)
-    speed: float = Field(default=1.0, ge=0.5, le=2.0)
-    avatar: str = Field(..., description="Avatar name (e.g., 'bernard', 'queso')")
-    output_filename: str = Field(..., description="Output filename (without path)")
-
-
-class TTSAnimateResponse(BaseModel):
-    success: bool
-    video_path: str
-    audio_path: str
-    duration_seconds: float
-
-
-TTS_API_URL = "http://localhost:5050/v1/audio/speech"
-
-
-def get_audio_duration(file_path: Path) -> float:
-    result = subprocess.run(
-        [
-            "ffprobe",
-            "-v", "quiet",
-            "-show_entries", "format=duration",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            str(file_path),
-        ],
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode == 0 and result.stdout.strip():
-        return float(result.stdout.strip())
-    return 0.0
-
-
-@app.post("/api/tts/preview")
-async def preview_tts(request: TTSPreviewRequest):
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.post(
-                TTS_API_URL,
-                json={
-                    "model": "tts-1",
-                    "input": request.text,
-                    "voice": request.voice.value,
-                    "speed": request.speed,
-                    "response_format": "mp3",
-                },
-                headers={
-                    "Content-Type": "application/json",
-                    "Authorization": "Bearer your_api_key_here",
-                },
-                timeout=30.0,
-            )
-
-            if response.status_code != 200:
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"TTS API error: {response.text[:200]}"
-                )
-
-            return StreamingResponse(
-                iter([response.content]),
-                media_type="audio/mpeg",
-                headers={"Content-Disposition": "inline"},
-            )
-        except httpx.ConnectError:
-            raise HTTPException(
-                status_code=503,
-                detail="TTS service unavailable - ensure openai-edge-tts is running on port 5050"
-            )
-        except httpx.TimeoutException:
-            raise HTTPException(
-                status_code=504,
-                detail="TTS request timed out"
-            )
-
-
-@app.post("/api/tts/generate", response_model=TTSGenerateResponse)
-async def generate_tts(request: TTSGenerateRequest):
-    clips_dir = DATA_DIR / "clips"
-    clips_dir.mkdir(parents=True, exist_ok=True)
-
-    safe_filename = "".join(
-        c for c in request.output_filename
-        if c.isalnum() or c in "._-"
-    )
-    if not safe_filename.endswith(".mp3"):
-        safe_filename += ".mp3"
-
-    output_path = clips_dir / safe_filename
-
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.post(
-                TTS_API_URL,
-                json={
-                    "model": "tts-1",
-                    "input": request.text,
-                    "voice": request.voice.value,
-                    "speed": request.speed,
-                    "response_format": "mp3",
-                },
-                headers={
-                    "Content-Type": "application/json",
-                    "Authorization": "Bearer your_api_key_here",
-                },
-                timeout=30.0,
-            )
-
-            if response.status_code != 200:
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"TTS API error: {response.text[:200]}"
-                )
-
-            output_path.write_bytes(response.content)
-
-        except httpx.ConnectError:
-            raise HTTPException(
-                status_code=503,
-                detail="TTS service unavailable - ensure openai-edge-tts is running on port 5050"
-            )
-        except httpx.TimeoutException:
-            raise HTTPException(
-                status_code=504,
-                detail="TTS request timed out"
-            )
-
-    if not output_path.exists():
-        raise HTTPException(
-            status_code=500,
-            detail="TTS generation failed - output file not created"
-        )
-
-    duration = get_audio_duration(output_path)
-    file_size = output_path.stat().st_size
-
-    video_path_str = None
-    if request.avatar:
-        try:
-            avatar_path = validate_avatar(AVATARS_DIR, request.avatar)
-        except AvatarNotFoundError as e:
-            output_path.unlink(missing_ok=True)
-            raise HTTPException(
-                status_code=404,
-                detail=f"Avatar '{e.avatar_name}' not found. Available: {', '.join(e.available_avatars)}"
-            )
-        except MissingMouthShapeError as e:
-            output_path.unlink(missing_ok=True)
-            raise HTTPException(
-                status_code=400,
-                detail=f"Avatar '{e.avatar_name}' is missing mouth shapes: {', '.join(e.missing_shapes)}"
-            )
-
-        video_filename = safe_filename.replace(".mp3", ".mp4")
-        video_path = clips_dir / video_filename
-
-        try:
-            generate_lipsync_video(
-                audio_path=output_path,
-                avatar_path=avatar_path,
-                output_path=video_path,
-                config=LipsyncConfig()
-            )
-            video_path_str = f"clips/{video_filename}"
-            output_path.unlink(missing_ok=True)
-            file_size = video_path.stat().st_size
-        except RhubarbNotFoundError:
-            output_path.unlink(missing_ok=True)
-            raise HTTPException(
-                status_code=500,
-                detail="Rhubarb not found. Expected at backend/bin/Rhubarb-Lip-Sync-1.14.0-macOS/rhubarb"
-            )
-        except RuntimeError as e:
-            output_path.unlink(missing_ok=True)
-            raise HTTPException(
-                status_code=500,
-                detail=f"Lip-sync generation failed: {str(e)[:200]}"
-            )
-
-    audio_output_path = None if request.avatar else f"clips/{safe_filename}"
-
-    return TTSGenerateResponse(
-        success=True,
-        output_path=audio_output_path,
-        duration_seconds=duration,
-        file_size=file_size,
-        video_path=video_path_str,
-    )
-
-
-@app.get("/api/avatars")
-async def list_avatars():
-    return {"avatars": get_available_avatars(AVATARS_DIR)}
-
-
-@app.post("/api/tts/animate", response_model=TTSAnimateResponse)
-async def animate_tts(request: TTSAnimateRequest):
-    try:
-        avatar_path = validate_avatar(AVATARS_DIR, request.avatar)
-    except AvatarNotFoundError as e:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Avatar '{e.avatar_name}' not found. Available: {', '.join(e.available_avatars)}"
-        )
-    except MissingMouthShapeError as e:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Avatar '{e.avatar_name}' is missing mouth shapes: {', '.join(e.missing_shapes)}"
-        )
-
-    clips_dir = DATA_DIR / "clips"
-    clips_dir.mkdir(parents=True, exist_ok=True)
-
-    safe_base = "".join(c for c in request.output_filename if c.isalnum() or c in "._-")
-    if safe_base.endswith(".mp4"):
-        safe_base = safe_base[:-4]
-    if safe_base.endswith(".mp3"):
-        safe_base = safe_base[:-4]
-
-    audio_filename = f"{safe_base}.mp3"
-    video_filename = f"{safe_base}.mp4"
-    audio_path = clips_dir / audio_filename
-    video_path = clips_dir / video_filename
-
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.post(
-                TTS_API_URL,
-                json={
-                    "model": "tts-1",
-                    "input": request.text,
-                    "voice": request.voice.value,
-                    "speed": request.speed,
-                    "response_format": "mp3",
-                },
-                headers={
-                    "Content-Type": "application/json",
-                    "Authorization": "Bearer your_api_key_here",
-                },
-                timeout=30.0,
-            )
-
-            if response.status_code != 200:
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"TTS API error: {response.text[:200]}"
-                )
-
-            audio_path.write_bytes(response.content)
-
-        except httpx.ConnectError:
-            raise HTTPException(
-                status_code=503,
-                detail="TTS service unavailable - ensure openai-edge-tts is running on port 5050"
-            )
-        except httpx.TimeoutException:
-            raise HTTPException(
-                status_code=504,
-                detail="TTS request timed out"
-            )
-
-    try:
-        generate_lipsync_video(
-            audio_path=audio_path,
-            avatar_path=avatar_path,
-            output_path=video_path,
-            config=LipsyncConfig()
-        )
-    except RhubarbNotFoundError:
-        audio_path.unlink(missing_ok=True)
-        raise HTTPException(
-            status_code=500,
-            detail="Rhubarb not found. Expected at backend/bin/Rhubarb-Lip-Sync-1.14.0-macOS/rhubarb"
-        )
-    except RuntimeError as e:
-        audio_path.unlink(missing_ok=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Lip-sync generation failed: {str(e)[:200]}"
-        )
-
-    duration = get_audio_duration(audio_path)
-
-    return TTSAnimateResponse(
-        success=True,
-        video_path=f"clips/{video_filename}",
-        audio_path=f"clips/{audio_filename}",
-        duration_seconds=duration,
     )
 
 
@@ -1954,12 +1585,6 @@ async def analyze_vod_by_id(vod_id: str, request: VodAnalyzeRequest):
 
     if not video_path or not chat_path:
         raise HTTPException(status_code=400, detail="VOD not downloaded")
-
-    if request.include_speech and not is_feature_enabled("speech_analysis"):
-        raise HTTPException(
-            status_code=403,
-            detail="Speech analysis is disabled in config"
-        )
 
     try:
         video_full_path = resolve_safe_path(video_path, DATA_DIR)

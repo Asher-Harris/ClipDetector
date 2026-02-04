@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { type ClipWithStatus, type ExportResult } from "@/lib/types";
-import { exportClip, generateTTS, type ApiError } from "@/lib/api";
+import { exportClip, type ApiError } from "@/lib/api";
 import { Button, Spinner } from "./ui";
 
 interface ExportButtonProps {
@@ -28,12 +28,6 @@ function generateFilename(vodFilename: string, clip: ClipWithStatus): string {
   return `${vodBase}_${timestamp}_score${score}.mp4`;
 }
 
-function generateIntroFilename(vodFilename: string, clip: ClipWithStatus): string {
-  const vodBase = vodFilename.replace(/\.[^/.]+$/, "");
-  const timestamp = formatTimestamp(clip.trimStart);
-  return `${vodBase}_${timestamp}_intro.mp3`;
-}
-
 export function ExportButton({ clips, vodFilename, vodPath }: ExportButtonProps) {
   const [isExporting, setIsExporting] = useState(false);
   const [results, setResults] = useState<ExportResult[]>([]);
@@ -57,8 +51,6 @@ export function ExportButton({ clips, vodFilename, vodPath }: ExportButtonProps)
 
       const batchPromises = batch.map(async (clip) => {
         const filename = generateFilename(vodFilename, clip);
-        let introPath: string | undefined;
-        let introVideoPath: string | undefined;
 
         try {
           const response = await exportClip({
@@ -68,27 +60,10 @@ export function ExportButton({ clips, vodFilename, vodPath }: ExportButtonProps)
             output_filename: filename,
           });
 
-          if (clip.ttsSettings?.text?.trim()) {
-            const introFilename = generateIntroFilename(vodFilename, clip);
-            const ttsResponse = await generateTTS({
-              text: clip.ttsSettings.text,
-              voice: clip.ttsSettings.voice,
-              speed: clip.ttsSettings.speed,
-              output_filename: introFilename,
-              avatar: clip.ttsSettings.avatar,
-            });
-            introPath = ttsResponse.output_path;
-            if (ttsResponse.video_path) {
-              introVideoPath = ttsResponse.video_path;
-            }
-          }
-
           return {
             clipId: clip.id,
             status: "success" as const,
             outputPath: response.output_path,
-            introPath,
-            introVideoPath,
           };
         } catch (err) {
           const apiError = err as ApiError;
@@ -109,8 +84,6 @@ export function ExportButton({ clips, vodFilename, vodPath }: ExportButtonProps)
   };
 
   const successCount = results.filter((r) => r.status === "success").length;
-  const introCount = results.filter((r) => r.introPath).length;
-  const videoCount = results.filter((r) => r.introVideoPath).length;
   const errorCount = results.filter((r) => r.status === "error").length;
 
   useEffect(() => {
@@ -148,7 +121,6 @@ export function ExportButton({ clips, vodFilename, vodPath }: ExportButtonProps)
           {successCount > 0 && (
             <span className="text-success">
               {successCount} exported
-              {introCount > 0 && ` · ${introCount} intros`}
             </span>
           )}
           {successCount > 0 && errorCount > 0 && " · "}

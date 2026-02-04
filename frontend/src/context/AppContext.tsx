@@ -7,7 +7,6 @@ import {
   type ClipWithStatus,
   type ClipCandidateResult,
   type ClipStatus,
-  type TTSSettings,
   generateClipId,
 } from "@/lib/types";
 import { loadFromStorage, saveToStorage, STORAGE_KEYS } from "@/lib/storage";
@@ -24,7 +23,6 @@ type AppActions = {
   setClipStatus: (clipId: string, status: ClipStatus) => void;
   updateTrim: (clipId: string, trimStart: number, trimEnd: number) => void;
   resetClipTrim: (clipId: string) => void;
-  updateTTSSettings: (clipId: string, settings: TTSSettings) => void;
 };
 
 const AppContext = createContext<(AppState & AppActions) | null>(null);
@@ -50,7 +48,6 @@ function deriveClipsWithStatus(
       status: statusInfo?.status || "pending",
       trimStart: statusInfo?.trimStart ?? candidate.clip_start,
       trimEnd: statusInfo?.trimEnd ?? candidate.clip_end,
-      ttsSettings: statusInfo?.ttsSettings,
     };
   });
 }
@@ -128,17 +125,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const updateTTSSettings = useCallback((clipId: string, settings: TTSSettings) => {
-    setClipStatuses((prev) => ({
-      ...prev,
-      [clipId]: {
-        ...prev[clipId],
-        status: prev[clipId]?.status || "pending",
-        ttsSettings: settings,
-      },
-    }));
-  }, []);
-
   const clipsWithStatus = analysisResult
     ? deriveClipsWithStatus(analysisResult.candidates, clipStatuses)
     : [];
@@ -154,7 +140,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setClipStatus,
         updateTrim,
         resetClipTrim,
-        updateTTSSettings,
       }}
     >
       {children}

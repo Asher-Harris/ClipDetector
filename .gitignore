@@ -12,16 +12,12 @@ node_modules/
 data/vods/*
 data/chats/*
 data/clips/*
-data/avatars/*
 data/twitch/*
 !data/vods/.gitkeep
 !data/chats/.gitkeep
 !data/clips/.gitkeep
 !data/avatars/.gitkeep
 !data/twitch/.gitkeep
-
-# External binaries
-backend/bin/
 
 # OS
 .DS_Store

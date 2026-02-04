@@ -14,9 +14,7 @@ import {
   createProfile,
   updateProfile,
   deleteProfile,
-  getConfig,
   type AnalysisProgress,
-  type AppConfig,
 } from "@/lib/api";
 import { useToast } from "@/context/ToastContext";
 import { useApp } from "@/context/AppContext";
@@ -40,7 +38,6 @@ export default function Home() {
   const [includeSpeech, setIncludeSpeech] = useState(false);
   const [speechModelSize, setSpeechModelSize] = useState("base");
   const [analysisProgress, setAnalysisProgress] = useState<AnalysisProgress | null>(null);
-  const [config, setConfig] = useState<AppConfig | null>(null);
 
   const selectedVod = useMemo(
     () => downloadedVods.find((v) => v.id === selectedVodId),
@@ -52,14 +49,12 @@ export default function Home() {
       try {
         await checkHealth();
         setIsHealthy(true);
-        const [vodsResponse, profileList, appConfig] = await Promise.all([
+        const [vodsResponse, profileList] = await Promise.all([
           listDownloadedVods(),
           listProfiles(),
-          getConfig(),
         ]);
         setDownloadedVods(vodsResponse.vods);
         setProfiles(profileList);
-        setConfig(appConfig);
       } catch {
         setIsHealthy(false);
         addToast("error", "Failed to connect to backend");
@@ -74,7 +69,7 @@ export default function Home() {
     if (!selectedVodId || !selectedVod) return;
 
     const profile = profiles.find((p) => p.id === selectedProfileId);
-    const speechEnabled = includeSpeech && config?.features.speech_analysis;
+    const speechEnabled = includeSpeech;
 
     setIsAnalyzing(true);
     setAnalysisProgress(null);
@@ -300,49 +295,47 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Speech Analysis (if enabled) */}
-          {config?.features.speech_analysis && (
-            <div className="p-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => setIncludeSpeech(!includeSpeech)}
-                    disabled={isAnalyzing}
+          {/* Speech Analysis */}
+          <div className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setIncludeSpeech(!includeSpeech)}
+                  disabled={isAnalyzing}
+                  className={`
+                    relative w-9 h-5 rounded-full transition-colors
+                    ${includeSpeech ? "bg-accent" : "bg-bg-overlay"}
+                    disabled:opacity-50 disabled:cursor-not-allowed
+                  `}
+                >
+                  <span
                     className={`
-                      relative w-9 h-5 rounded-full transition-colors
-                      ${includeSpeech ? "bg-accent" : "bg-bg-overlay"}
-                      disabled:opacity-50 disabled:cursor-not-allowed
+                      absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform
+                      ${includeSpeech ? "translate-x-4" : "translate-x-0"}
                     `}
-                  >
-                    <span
-                      className={`
-                        absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform
-                        ${includeSpeech ? "translate-x-4" : "translate-x-0"}
-                      `}
-                    />
-                  </button>
-                  <div>
-                    <p className="text-sm font-medium">Speech Analysis</p>
-                    <p className="text-xs text-fg-muted">Transcribe audio for keyword detection</p>
-                  </div>
-                </div>
-                {includeSpeech && (
-                  <Select
-                    value={speechModelSize}
-                    onChange={setSpeechModelSize}
-                    options={[
-                      { value: "tiny", label: "Tiny" },
-                      { value: "base", label: "Base" },
-                      { value: "small", label: "Small" },
-                      { value: "medium", label: "Medium" },
-                    ]}
-                    disabled={isAnalyzing}
-                    className="w-28"
                   />
-                )}
+                </button>
+                <div>
+                  <p className="text-sm font-medium">Speech Analysis</p>
+                  <p className="text-xs text-fg-muted">Transcribe audio for keyword detection</p>
+                </div>
               </div>
+              {includeSpeech && (
+                <Select
+                  value={speechModelSize}
+                  onChange={setSpeechModelSize}
+                  options={[
+                    { value: "tiny", label: "Tiny" },
+                    { value: "base", label: "Base" },
+                    { value: "small", label: "Small" },
+                    { value: "medium", label: "Medium" },
+                  ]}
+                  disabled={isAnalyzing}
+                  className="w-28"
+                />
+              )}
             </div>
-          )}
+          </div>
         </div>
 
         {/* Analysis Progress */}
