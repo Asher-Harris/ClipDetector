@@ -2,6 +2,7 @@ import json
 import re
 import time
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import httpx
@@ -214,6 +215,14 @@ class VodStorage:
                     "video_filename": None,
                     "chat_filename": None,
                 })
+
+        cutoff = datetime.now(timezone.utc) - timedelta(days=30)
+        data["vods"] = [
+            v for v in data["vods"]
+            if v.get("downloaded")
+            or v.get("channel_login") != channel_login
+            or datetime.fromisoformat(v["created_at"].replace("Z", "+00:00")) >= cutoff
+        ]
 
         data["vods"].sort(key=lambda v: v["created_at"], reverse=True)
         self.save(data)

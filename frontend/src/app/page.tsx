@@ -321,18 +321,19 @@ export default function Home() {
                 </div>
               </div>
               {includeSpeech && (
-                <Select
-                  value={speechModelSize}
-                  onChange={setSpeechModelSize}
-                  options={[
-                    { value: "tiny", label: "Tiny" },
-                    { value: "base", label: "Base" },
-                    { value: "small", label: "Small" },
-                    { value: "medium", label: "Medium" },
-                  ]}
-                  disabled={isAnalyzing}
-                  className="w-28"
-                />
+                <div className="w-28 shrink-0">
+                  <Select
+                    value={speechModelSize}
+                    onChange={setSpeechModelSize}
+                    options={[
+                      { value: "tiny", label: "Tiny" },
+                      { value: "base", label: "Base" },
+                      { value: "small", label: "Small" },
+                      { value: "medium", label: "Medium" },
+                    ]}
+                    disabled={isAnalyzing}
+                  />
+                </div>
               )}
             </div>
           </div>

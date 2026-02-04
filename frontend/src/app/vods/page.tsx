@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { AppHeader, Spinner } from "@/components/ui";
 import { VodCard } from "@/components/VodCard";
-import { listTwitchVods, type ApiError } from "@/lib/api";
+import { refreshTwitchVods, type ApiError } from "@/lib/api";
 import { useToast } from "@/context/ToastContext";
 import { useApp } from "@/context/AppContext";
 import type { TwitchVod, TwitchChannel } from "@/lib/types";
@@ -26,7 +26,7 @@ export default function VodsPage() {
 
   const loadVods = async () => {
     try {
-      const data = await listTwitchVods();
+      const data = await refreshTwitchVods();
       setChannels(data.channels);
       setVods(data.vods);
     } catch (err) {
