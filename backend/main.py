@@ -1587,6 +1587,17 @@ async def list_vod_clips(vod_id: str):
     }
 
 
+@app.delete("/api/twitch/clips/{clip_id}")
+async def delete_twitch_clip(clip_id: str):
+    clips_dir = DATA_DIR / "clips"
+    matching = list(clips_dir.glob(f"*_{clip_id}.mp4"))
+    if not matching:
+        raise HTTPException(status_code=404, detail="Clip file not found")
+    for f in matching:
+        f.unlink()
+    return {"message": "Clip deleted"}
+
+
 @app.post("/api/twitch/clips/{clip_id}/download")
 async def download_twitch_clip(clip_id: str, request: ClipDownloadRequest):
     twitch_config = get_twitch_config()

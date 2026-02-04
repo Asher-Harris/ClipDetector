@@ -9,6 +9,8 @@ type TwitchClipCardProps = {
   clip: TwitchClip;
   channelLogin: string;
   onDownloaded: () => void;
+  onPlay: (clip: TwitchClip) => void;
+  onDelete?: (clip: TwitchClip) => void;
 };
 
 function formatViewCount(count: number): string {
@@ -46,7 +48,23 @@ function CheckIcon({ className }: { className?: string }) {
   );
 }
 
-export function TwitchClipCard({ clip, channelLogin, onDownloaded }: TwitchClipCardProps) {
+function TrashIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M2 4h12M5.333 4V2.667a1.333 1.333 0 0 1 1.334-1.334h2.666a1.333 1.333 0 0 1 1.334 1.334V4m2 0v9.333a1.333 1.333 0 0 1-1.334 1.334H4.667a1.333 1.333 0 0 1-1.334-1.334V4h9.334z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  );
+}
+
+function PlayIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+      <path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l11.04-6.86a1 1 0 0 0 0-1.72L9.5 4.28a1 1 0 0 0-1.5.86Z"/>
+    </svg>
+  );
+}
+
+export function TwitchClipCard({ clip, channelLogin, onDownloaded, onPlay, onDelete }: TwitchClipCardProps) {
   const [downloadState, setDownloadState] = useState<"idle" | "downloading" | "downloaded">(
     clip.downloaded ? "downloaded" : "idle"
   );
@@ -68,7 +86,7 @@ export function TwitchClipCard({ clip, channelLogin, onDownloaded }: TwitchClipC
 
   return (
     <div className="group flex flex-col bg-bg-surface rounded-lg border border-border-default hover:border-border-strong transition-colors overflow-hidden">
-      <div className="relative aspect-video bg-bg-overlay">
+      <div className="relative aspect-video bg-bg-overlay cursor-pointer" onClick={() => onPlay(clip)}>
         {clip.thumbnail_url ? (
           <img src={clip.thumbnail_url} alt="" className="w-full h-full object-cover" />
         ) : (
@@ -77,6 +95,11 @@ export function TwitchClipCard({ clip, channelLogin, onDownloaded }: TwitchClipC
           </div>
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="w-10 h-10 flex items-center justify-center rounded-full bg-black/60">
+            <PlayIcon className="w-5 h-5 text-white ml-0.5" />
+          </div>
+        </div>
         <div className="absolute bottom-2 left-2 right-2 flex items-end justify-between">
           <span className="text-[11px] font-medium text-white/90 bg-black/50 px-1.5 py-0.5 rounded">
             {formatDuration(clip.duration)}
@@ -111,9 +134,19 @@ export function TwitchClipCard({ clip, channelLogin, onDownloaded }: TwitchClipC
               Downloading
             </div>
           ) : downloadState === "downloaded" ? (
-            <div className="w-full h-7 flex items-center justify-center gap-1.5 text-[12px] font-medium text-fg-muted bg-bg-overlay rounded-md">
-              <CheckIcon className="w-3.5 h-3.5" />
-              Downloaded
+            <div className="flex items-center gap-1.5">
+              <div className="flex-1 h-7 flex items-center justify-center gap-1.5 text-[12px] font-medium text-fg-muted bg-bg-overlay rounded-md">
+                <CheckIcon className="w-3.5 h-3.5" />
+                Downloaded
+              </div>
+              {onDelete && (
+                <button
+                  onClick={() => onDelete(clip)}
+                  className="h-7 w-7 flex-shrink-0 flex items-center justify-center text-fg-faint hover:text-error bg-bg-overlay hover:bg-error-muted rounded-md transition-colors"
+                >
+                  <TrashIcon className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
           ) : (
             <button

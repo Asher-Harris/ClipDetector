@@ -21,6 +21,7 @@ export default function VodsPage() {
   const [channels, setChannels] = useState<TwitchChannel[]>([]);
   const [vods, setVods] = useState<TwitchVod[]>([]);
   const [selectedChannel, setSelectedChannel] = useState<string | null>(null);
+  const [showDownloadedOnly, setShowDownloadedOnly] = useState(false);
 
   const loadVods = async () => {
     try {
@@ -39,9 +40,9 @@ export default function VodsPage() {
     loadVods();
   }, []);
 
-  const filteredVods = selectedChannel
-    ? vods.filter((v) => v.channel_login === selectedChannel)
-    : vods;
+  const filteredVods = vods
+    .filter((v) => !selectedChannel || v.channel_login === selectedChannel)
+    .filter((v) => !showDownloadedOnly || v.downloaded);
 
   const downloadedCount = vods.filter((v) => v.downloaded).length;
 
@@ -80,10 +81,25 @@ export default function VodsPage() {
                 </button>
               );
             })}
+            {downloadedCount > 0 && (
+              <>
+                <div className="w-px h-4 bg-border-default mx-1" />
+                <button
+                  onClick={() => setShowDownloadedOnly((prev) => !prev)}
+                  className={`px-3 h-7 text-xs font-medium rounded-md transition-colors ${
+                    showDownloadedOnly
+                      ? "bg-accent text-white"
+                      : "bg-bg-surface hover:bg-bg-hover text-fg-secondary hover:text-fg-default border border-border-default"
+                  }`}
+                >
+                  Downloaded
+                </button>
+              </>
+            )}
           </div>
           {vods.length > 0 && (
             <div className="text-xs text-fg-muted tabular-nums">
-              {downloadedCount} of {vods.length} downloaded
+              {downloadedCount} downloaded · {showDownloadedOnly ? `${filteredVods.length} of ${vods.length}` : vods.length} VODs
             </div>
           )}
         </div>
@@ -104,7 +120,13 @@ export default function VodsPage() {
           </div>
         ) : filteredVods.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 text-center">
-            <p className="text-sm text-fg-muted">No VODs from this channel</p>
+            <p className="text-sm text-fg-muted">
+              {showDownloadedOnly && selectedChannel
+                ? "No downloaded VODs from this channel"
+                : showDownloadedOnly
+                  ? "No downloaded VODs"
+                  : "No VODs from this channel"}
+            </p>
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">

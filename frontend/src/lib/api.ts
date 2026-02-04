@@ -295,6 +295,12 @@ export async function getVodClips(vodId: string): Promise<VodClipsResponse> {
   return apiRequest(`/api/twitch/vods/${vodId}/clips`);
 }
 
+export async function deleteTwitchClip(clipId: string): Promise<void> {
+  await apiRequest(`/api/twitch/clips/${clipId}`, {
+    method: "DELETE",
+  });
+}
+
 export async function downloadTwitchClip(
   clipId: string,
   channelLogin: string
