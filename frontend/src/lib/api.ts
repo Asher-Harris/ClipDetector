@@ -11,6 +11,7 @@ import type {
   DownloadProgress,
   ActiveDownloadsResponse,
   TwitchVod,
+  LocalClip,
 } from "./types";
 
 const API_BASE = "http://localhost:8000";
@@ -308,6 +309,17 @@ export async function downloadTwitchClip(
   return apiRequest(`/api/twitch/clips/${clipId}/download`, {
     method: "POST",
     body: JSON.stringify({ channel_login: channelLogin }),
+  });
+}
+
+// Local Clips API
+export async function listLocalClips(): Promise<LocalClip[]> {
+  return apiRequest("/api/clips");
+}
+
+export async function deleteLocalClip(filename: string): Promise<void> {
+  await apiRequest(`/api/clips/${encodeURIComponent(filename)}`, {
+    method: "DELETE",
   });
 }
 

@@ -4,8 +4,16 @@ import { useEffect } from "react";
 import type { TwitchClip } from "@/lib/types";
 import { getClipUrl } from "@/lib/api";
 
+type PlayableClip = {
+  filename: string;
+  title: string;
+  duration: number;
+  creator_name?: string;
+  view_count?: number;
+};
+
 type ClipPlayerModalProps = {
-  clip: TwitchClip | null;
+  clip: TwitchClip | PlayableClip | null;
   onClose: () => void;
 };
 
@@ -43,7 +51,10 @@ export function ClipPlayerModal({ clip, onClose }: ClipPlayerModalProps) {
 
   if (!clip) return null;
 
-  const isDownloaded = clip.downloaded && clip.filename;
+  const isTwitchClip = "id" in clip && "downloaded" in clip;
+  const twitchClip = isTwitchClip ? (clip as TwitchClip) : null;
+  const isDownloaded = twitchClip ? twitchClip.downloaded && twitchClip.filename : true;
+  const videoSrc = clip.filename ? getClipUrl(`clips/${clip.filename}`) : null;
 
   return (
     <div
@@ -62,20 +73,20 @@ export function ClipPlayerModal({ clip, onClose }: ClipPlayerModalProps) {
           </button>
 
           <div className="aspect-video bg-black">
-            {isDownloaded ? (
+            {isDownloaded && videoSrc ? (
               <video
                 controls
                 autoPlay
                 className="w-full h-full"
-                src={getClipUrl(`clips/${clip.filename}`)}
+                src={videoSrc}
               />
-            ) : (
+            ) : twitchClip ? (
               <iframe
-                src={`https://clips.twitch.tv/embed?clip=${clip.id}&parent=localhost`}
+                src={`https://clips.twitch.tv/embed?clip=${twitchClip.id}&parent=localhost`}
                 className="w-full h-full"
                 allowFullScreen
               />
-            )}
+            ) : null}
           </div>
         </div>
 
@@ -84,10 +95,18 @@ export function ClipPlayerModal({ clip, onClose }: ClipPlayerModalProps) {
             {clip.title}
           </h3>
           <div className="flex items-center gap-2 mt-1.5 text-[11px] text-fg-muted">
-            <span className="font-medium text-fg-secondary">{clip.creator_name}</span>
-            <span className="text-fg-faint">·</span>
-            <span className="tabular-nums">{formatViewCount(clip.view_count)} views</span>
-            <span className="text-fg-faint">·</span>
+            {clip.creator_name && (
+              <>
+                <span className="font-medium text-fg-secondary">{clip.creator_name}</span>
+                <span className="text-fg-faint">·</span>
+              </>
+            )}
+            {clip.view_count != null && (
+              <>
+                <span className="tabular-nums">{formatViewCount(clip.view_count)} views</span>
+                <span className="text-fg-faint">·</span>
+              </>
+            )}
             <span className="tabular-nums">{formatDuration(clip.duration)}</span>
           </div>
         </div>

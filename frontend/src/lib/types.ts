@@ -280,6 +280,13 @@ export type VodClipsResponse = {
   total: number;
 };
 
+export type LocalClip = {
+  filename: string;
+  file_size: number;
+  created_at: string;
+  duration: number;
+};
+
 export type DownloadProgress = {
   stage: "queued" | "video" | "chat";
   percent: number;

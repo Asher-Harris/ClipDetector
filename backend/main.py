@@ -1155,6 +1155,78 @@ async def export_clip(request: ClipExportRequest):
     )
 
 
+# ============ Local Clips Endpoints ============
+
+class LocalClip(BaseModel):
+    filename: str
+    file_size: int
+    created_at: str
+    duration: float
+
+
+def get_video_duration(file_path: Path) -> float:
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe", "-v", "quiet", "-print_format", "json",
+                "-show_format", str(file_path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode == 0:
+            info = json.loads(result.stdout)
+            return float(info.get("format", {}).get("duration", 0))
+    except (subprocess.TimeoutExpired, json.JSONDecodeError, ValueError):
+        pass
+    return 0
+
+
+VIDEO_EXTENSIONS = {".mp4", ".mkv", ".webm", ".mov"}
+
+
+@app.get("/api/clips", response_model=list[LocalClip])
+async def list_local_clips():
+    clips_dir = DATA_DIR / "clips"
+    if not clips_dir.exists():
+        return []
+
+    clips = []
+    for f in clips_dir.iterdir():
+        if not f.is_file() or f.suffix.lower() not in VIDEO_EXTENSIONS:
+            continue
+        stat = f.stat()
+        clips.append(LocalClip(
+            filename=f.name,
+            file_size=stat.st_size,
+            created_at=datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
+            duration=get_video_duration(f),
+        ))
+
+    clips.sort(key=lambda c: c.created_at, reverse=True)
+    return clips
+
+
+@app.delete("/api/clips/{filename}")
+async def delete_local_clip(filename: str):
+    clips_dir = DATA_DIR / "clips"
+    file_path = clips_dir / filename
+    try:
+        resolved = file_path.resolve()
+        clips_resolved = clips_dir.resolve()
+        if not str(resolved).startswith(str(clips_resolved)):
+            raise HTTPException(status_code=400, detail="Invalid filename")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Clip not found")
+
+    file_path.unlink()
+    return {"message": "Clip deleted"}
+
+
 # ============ Twitch VOD Endpoints ============
 
 TWITCH_DIR = DATA_DIR / "twitch"

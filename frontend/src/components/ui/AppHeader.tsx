@@ -4,7 +4,7 @@ import Link from "next/link";
 import { ThemeToggle } from "./ThemeToggle";
 
 type AppHeaderProps = {
-  currentPage: "analyze" | "vods" | "review";
+  currentPage: "analyze" | "vods" | "clips" | "review";
   children?: React.ReactNode;
 };
 
@@ -43,6 +43,9 @@ export function AppHeader({ currentPage, children }: AppHeaderProps) {
             </NavLink>
             <NavLink href="/vods" isActive={currentPage === "vods"}>
               VODs
+            </NavLink>
+            <NavLink href="/clips" isActive={currentPage === "clips"}>
+              Clips
             </NavLink>
             <NavLink href="/review" isActive={currentPage === "review"}>
               Review
