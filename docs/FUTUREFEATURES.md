@@ -4,11 +4,19 @@ Ideas and planned features for expanding ClipDetector's capabilities.
 
 ## Table of Contents
 
+- [My Ideas](#my-ideas)
 - [Detection & Analysis](#detection--analysis)
 - [Clip Processing & Export](#clip-processing--export)
 - [User Experience](#user-experience)
 - [Integrations](#integrations)
 - [Technical Improvements](#technical-improvements)
+
+---
+
+### My Ideas
+
+- Normalize clip analysis scores/continue improving weights.
+- Ability to see currently live streams in the VODs page (obv not downloadable). You should also be able to click on this live stream and see the clips for that stream so far if possible. Should be obvious that it is live and not a VOD.
 
 ---
 
