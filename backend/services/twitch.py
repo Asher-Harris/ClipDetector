@@ -206,11 +206,13 @@ class VodStorage:
 
         existing_ids = {v["id"] for v in data.get("vods", [])}
 
+        broadcaster_id = channel_info.get("id")
         for vod in new_vods:
             if vod["id"] not in existing_ids:
                 data["vods"].append({
                     "id": vod["id"],
                     "channel_login": channel_login,
+                    "channel_id": broadcaster_id,
                     "title": vod["title"],
                     "created_at": vod["created_at"],
                     "duration": vod["duration"],
@@ -221,6 +223,11 @@ class VodStorage:
                     "downloaded": False,
                     "video_filename": None,
                     "chat_filename": None,
+                    "automation_state": "pending",
+                    "automation_error": None,
+                    "vertical_clips": [],
+                    "delivered_clips": [],
+                    "processed_at": None,
                 })
 
         cutoff = datetime.now(timezone.utc) - timedelta(days=30)
@@ -259,6 +266,39 @@ class VodStorage:
 
                 return result
         return None
+
+    def get_unprocessed_vods(self) -> list[dict]:
+        data = self.load()
+        return [
+            v for v in data.get("vods", [])
+            if v.get("automation_state") not in ("done", "error", "processing")
+        ]
+
+    def get_ready_clips(self) -> list[dict]:
+        data = self.load()
+        result = []
+        for vod in data.get("vods", []):
+            vertical_clips = vod.get("vertical_clips", [])
+            delivered_clips = set(vod.get("delivered_clips", []))
+            for filename in vertical_clips:
+                if filename not in delivered_clips:
+                    result.append({
+                        "filename": filename,
+                        "channel_login": vod.get("channel_login", ""),
+                        "vod_title": vod.get("title", ""),
+                    })
+        return result
+
+    def mark_clip_delivered(self, filename: str) -> bool:
+        data = self.load()
+        for vod in data.get("vods", []):
+            if filename in vod.get("vertical_clips", []):
+                delivered = vod.setdefault("delivered_clips", [])
+                if filename not in delivered:
+                    delivered.append(filename)
+                self.save(data)
+                return True
+        return False
 
     def list_downloaded_vods_with_channel_info(self) -> list[dict]:
         """Returns downloaded VODs with embedded channel info and computed paths."""

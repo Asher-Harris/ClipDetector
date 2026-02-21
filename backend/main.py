@@ -1,15 +1,22 @@
 import asyncio
 import json
+import logging
 import os
 import re
 import subprocess
 from asyncio import Semaphore
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
 
 load_dotenv()
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(levelname)s [%(name)s] %(message)s",
+)
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -29,8 +36,48 @@ from analyzers.speech import (
 from analyzers.clips import analyze_clips, ClipsConfig
 from services.twitch import TwitchClient, VodStorage, parse_duration_to_seconds
 from services.downloader import TwitchDownloader
+from services.pipeline import run_automation_pipeline
+from services.scheduler import get_job_info, setup_scheduler, stop_scheduler
 
-app = FastAPI(title="ClipDetector API", version="0.1.0")
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+
+_pipeline_running = False
+_pipeline_results: list[dict] = []
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    config = load_config()
+    if config.get("automation", {}).get("enabled", True):
+        interval = config.get("automation", {}).get("check_interval_hours", 2)
+
+        async def pipeline_task():
+            global _pipeline_running, _pipeline_results
+            if _pipeline_running:
+                return
+            _pipeline_running = True
+            try:
+                twitch_cfg = get_twitch_config()
+                if not twitch_cfg:
+                    return
+                client = TwitchClient(twitch_cfg["client_id"], twitch_cfg["client_secret"])
+                storage = VodStorage(VODS_STORAGE_PATH)
+                downloader = TwitchDownloader(twitch_cfg["cli_path"])
+                result = await run_automation_pipeline(
+                    load_config(), storage, client, downloader, ANTHROPIC_API_KEY
+                )
+                _pipeline_results.insert(0, result.to_dict())
+                del _pipeline_results[10:]
+            finally:
+                _pipeline_running = False
+
+        setup_scheduler(pipeline_task, interval)
+
+    yield
+    stop_scheduler()
+
+
+app = FastAPI(title="ClipDetector API", version="0.1.0", lifespan=lifespan)
 
 # ============ Download Management ============
 # {vod_id: {"downloader": ..., "video_path": ..., "chat_path": ..., "stage": ..., "video_percent": ..., "chat_percent": ..., "message": ...}}
@@ -210,6 +257,73 @@ async def stream_video(filename: str, request: Request):
 
         return StreamingResponse(
             iter_full_file(),
+            media_type=content_type,
+            headers={
+                "Accept-Ranges": "bytes",
+                "Content-Length": str(file_size),
+            },
+        )
+
+
+@app.get("/data/clips/{filename:path}")
+async def stream_clip(filename: str, request: Request):
+    """Stream clip with Range request support."""
+    clip_path = DATA_DIR / "clips" / filename
+
+    try:
+        clip_path = clip_path.resolve()
+        data_dir_resolved = DATA_DIR.resolve()
+        if not str(clip_path).startswith(str(data_dir_resolved)):
+            raise HTTPException(status_code=400, detail="Invalid file path")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid file path")
+
+    if not clip_path.exists():
+        raise HTTPException(status_code=404, detail="Clip not found")
+
+    file_size = clip_path.stat().st_size
+    content_type = get_content_type(clip_path)
+    range_header = request.headers.get("range")
+
+    if range_header:
+        range_match = range_header.replace("bytes=", "").split("-")
+        start = int(range_match[0]) if range_match[0] else 0
+        end = int(range_match[1]) if range_match[1] else file_size - 1
+        start = max(0, min(start, file_size - 1))
+        end = max(start, min(end, file_size - 1))
+        content_length = end - start + 1
+
+        def iter_clip():
+            with open(clip_path, "rb") as f:
+                f.seek(start)
+                remaining = content_length
+                chunk_size = 1024 * 1024
+                while remaining > 0:
+                    data = f.read(min(chunk_size, remaining))
+                    if not data:
+                        break
+                    remaining -= len(data)
+                    yield data
+
+        return StreamingResponse(
+            iter_clip(),
+            status_code=206,
+            media_type=content_type,
+            headers={
+                "Content-Range": f"bytes {start}-{end}/{file_size}",
+                "Accept-Ranges": "bytes",
+                "Content-Length": str(content_length),
+            },
+        )
+    else:
+        def iter_full_clip():
+            with open(clip_path, "rb") as f:
+                chunk_size = 1024 * 1024
+                while chunk := f.read(chunk_size):
+                    yield chunk
+
+        return StreamingResponse(
+            iter_full_clip(),
             media_type=content_type,
             headers={
                 "Accept-Ranges": "bytes",
@@ -1962,3 +2076,77 @@ async def delete_twitch_vod(vod_id: str):
     })
 
     return {"success": True, "message": "VOD deleted"}
+
+
+# ============ Automation Endpoints ============
+
+@app.get("/api/automation/status")
+async def automation_status():
+    job_info = get_job_info()
+    return {
+        "next_run": job_info["next_run"],
+        "is_running": _pipeline_running,
+        "scheduler_running": job_info["running"],
+        "recent_results": _pipeline_results[:5],
+    }
+
+
+@app.post("/api/automation/run")
+async def automation_run():
+    global _pipeline_running, _pipeline_results
+
+    if _pipeline_running:
+        return {"triggered": False, "message": "Pipeline already running"}
+
+    async def _run():
+        global _pipeline_running, _pipeline_results
+        _pipeline_running = True
+        try:
+            twitch_cfg = get_twitch_config()
+            if not twitch_cfg:
+                return
+            client = TwitchClient(twitch_cfg["client_id"], twitch_cfg["client_secret"])
+            storage = VodStorage(VODS_STORAGE_PATH)
+            downloader = TwitchDownloader(twitch_cfg["cli_path"])
+            result = await run_automation_pipeline(
+                load_config(), storage, client, downloader, ANTHROPIC_API_KEY
+            )
+            _pipeline_results.insert(0, result.to_dict())
+            del _pipeline_results[10:]
+        finally:
+            _pipeline_running = False
+
+    asyncio.create_task(_run())
+    return {"triggered": True, "message": "Pipeline started"}
+
+
+@app.get("/api/automation/ready-clips")
+async def automation_ready_clips():
+    storage = VodStorage(VODS_STORAGE_PATH)
+    clips_dir = DATA_DIR / "clips"
+    ready = storage.get_ready_clips()
+    result = []
+    for item in ready:
+        filename = item["filename"]
+        file_path = clips_dir / filename
+        if not file_path.exists():
+            continue
+        stat = file_path.stat()
+        result.append({
+            "filename": filename,
+            "channel": item["channel_login"],
+            "vod_title": item["vod_title"],
+            "file_size": stat.st_size,
+            "url": f"http://localhost:8000/data/clips/{filename}",
+            "created_at": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
+        })
+    return result
+
+
+@app.post("/api/automation/clips/{filename}/delivered")
+async def automation_clip_delivered(filename: str):
+    storage = VodStorage(VODS_STORAGE_PATH)
+    found = storage.mark_clip_delivered(filename)
+    if not found:
+        raise HTTPException(status_code=404, detail="Clip not found in any VOD")
+    return {"success": True}

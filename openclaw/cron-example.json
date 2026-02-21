@@ -1,0 +1,51 @@
+{
+  "description": "OpenClaw cron job — fetch and deliver ClipDetector vertical clips via Telegram",
+  "schedule": "0 */2 * * *",
+  "steps": [
+    {
+      "name": "trigger_pipeline",
+      "method": "POST",
+      "url": "http://localhost:8000/api/automation/run"
+    },
+    {
+      "name": "wait_for_pipeline",
+      "type": "sleep",
+      "seconds": 30
+    },
+    {
+      "name": "fetch_ready_clips",
+      "method": "GET",
+      "url": "http://localhost:8000/api/automation/ready-clips",
+      "store_as": "clips"
+    },
+    {
+      "name": "send_clips",
+      "for_each": "clips",
+      "steps": [
+        {
+          "name": "download_clip",
+          "method": "GET",
+          "url": "{{item.url}}",
+          "store_as": "video_bytes"
+        },
+        {
+          "name": "send_telegram_video",
+          "method": "POST",
+          "url": "https://api.telegram.org/bot{{TELEGRAM_BOT_TOKEN}}/sendVideo",
+          "body": {
+            "chat_id": "{{TELEGRAM_CHAT_ID}}",
+            "caption": "{{item.channel}} — {{item.vod_title}}"
+          },
+          "file_field": "video",
+          "file_data": "{{video_bytes}}",
+          "file_name": "{{item.filename}}"
+        },
+        {
+          "name": "mark_delivered",
+          "method": "POST",
+          "url": "http://localhost:8000/api/automation/clips/{{item.filename}}/delivered"
+        }
+      ]
+    }
+  ]
+}
