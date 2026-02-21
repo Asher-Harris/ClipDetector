@@ -47,6 +47,10 @@ TWITCH_CLIENT_SECRET=your_client_secret
 DISCORD_BOT_TOKEN=your_bot_token
 DISCORD_USER_ID=your_user_id
 TWITCH_CHANNELS=jynxzi,caseoh_
+
+# Optional: OpenClaw webhook (triggers clip pipeline on laptop)
+OPENCLAW_WEBHOOK_URL=http://192.168.x.x:18789
+OPENCLAW_WEBHOOK_TOKEN=your_shared_secret
 ```
 
 ### 4. Run Locally

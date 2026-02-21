@@ -2150,3 +2150,29 @@ async def automation_clip_delivered(filename: str):
     if not found:
         raise HTTPException(status_code=404, detail="Clip not found in any VOD")
     return {"success": True}
+
+
+@app.post("/api/automation/cleanup-delivered")
+async def automation_cleanup_delivered():
+    storage = VodStorage(VODS_STORAGE_PATH)
+    clips_dir = DATA_DIR / "clips"
+    data = storage.load()
+
+    deleted = []
+    errors = []
+
+    for vod in data.get("vods", []):
+        for filename in vod.get("delivered_clips", []):
+            vertical_path = clips_dir / filename
+            original_name = filename.replace("_vertical.mp4", ".mp4")
+            original_path = clips_dir / original_name
+
+            for path in [vertical_path, original_path]:
+                if path.exists():
+                    try:
+                        path.unlink()
+                        deleted.append(path.name)
+                    except OSError as e:
+                        errors.append({"file": path.name, "error": str(e)})
+
+    return {"deleted": deleted, "errors": errors}

@@ -1,5 +1,6 @@
 import { sendDiscordDM, sendTestMessage, type VODInfo } from "./discord";
 import { isVodKnown, markVodAsKnown } from "./store";
+import { triggerOpenClawWebhook } from "./webhook";
 import {
   AuthorizationError,
   createEventSubConnection,
@@ -72,6 +73,8 @@ async function notifyNewVOD(vod: VODInfo) {
   } else {
     console.error(`Failed to send Discord DM for VOD ${vod.id}`);
   }
+
+  await triggerOpenClawWebhook(vod);
 }
 
 function startVODPolling(userId: string, userLogin: string) {
