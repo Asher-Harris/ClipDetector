@@ -37,50 +37,139 @@ ClipDetector/
 
 ## Prerequisites
 
-- Python 3.12 (required - 3.13+ not yet supported by ML dependencies)
-- Node.js 18+
-- FFmpeg (for video processing)
+Download and install each of these before starting:
 
-## Setup
+- **Python 3.12** — [python.org/downloads](https://www.python.org/downloads/release/python-3120/). Must be 3.12, not 3.13+ (`onnxruntime` doesn't support it yet). During install, check **"Add Python to PATH"**.
+- **Node.js 18+** — [nodejs.org](https://nodejs.org/). LTS version recommended.
+- **FFmpeg** — [gyan.dev/ffmpeg/builds](https://www.gyan.dev/ffmpeg/builds/). Download the "essentials" build, extract it, and add the `bin/` folder to your system PATH.
+- **TwitchDownloaderCLI** — [GitHub releases](https://github.com/lay295/TwitchDownloader/releases). Download the Windows x64 zip, extract it, and place it somewhere on PATH (e.g. `C:\Tools\`).
+- **Git** — [git-scm.com](https://git-scm.com/download/win).
 
-### Backend
+## Windows Setup
 
-```bash
+### 1. Clone the Repository
+
+```
+git clone https://github.com/Asher-Harris/ClipDetector.git
+cd ClipDetector
+```
+
+### 2. Backend Setup
+
+```
 cd backend
-python3.12 -m venv venv
-source venv/bin/activate
+python -m venv venv
+venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-> **Note:** You must use Python 3.12 specifically. The `faster-whisper` dependency requires `onnxruntime` which doesn't have wheels for Python 3.13+.
+### 3. Credentials
 
-### Frontend
+Copy `backend/.env.example` to `backend/.env` and fill in your values:
 
-```bash
+```
+TWITCH_CLIENT_ID=your_client_id
+TWITCH_CLIENT_SECRET=your_client_secret
+ANTHROPIC_API_KEY=your_api_key
+TELEGRAM_BOT_TOKEN=your_bot_token
+TELEGRAM_CHAT_ID=your_chat_id
+```
+
+- Twitch credentials: [dev.twitch.tv/console](https://dev.twitch.tv/console) — register an app to get client ID and secret
+- Anthropic API key: [console.anthropic.com](https://console.anthropic.com)
+- Telegram setup: see step 4
+
+### 4. Telegram Bot
+
+ClipDetector delivers finished clips to a Telegram chat automatically.
+
+1. Open Telegram and message [@BotFather](https://t.me/BotFather) → send `/newbot` → follow the prompts → save the token
+2. Create a group or channel in Telegram and add your new bot to it
+3. Get the chat ID: add [@userinfobot](https://t.me/userinfobot) to the group, it will reply with the chat ID
+4. Enable group messages: message @BotFather → `/setprivacy` → select your bot → **Disable** → remove and re-add the bot to the group
+5. Add `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` to `backend/.env`
+
+### 5. Frontend Setup
+
+```
 cd frontend
 npm install
 ```
 
-## Running the Application
+### 6. Configuration
 
-### Start the Backend
+Edit `config.json` in the project root:
 
-```bash
+```json
+{
+  "twitch": {
+    "channels": ["jynxzi", "caseoh_"],
+    "cli_path": "C:\\Tools\\TwitchDownloaderCLI.exe"
+  },
+  "automation": {
+    "enabled": true,
+    "check_interval_hours": 2,
+    "top_clips_per_vod": 10,
+    "clip_delay_hours": 0
+  }
+}
+```
+
+- `twitch.channels` — Twitch channel logins to monitor
+- `twitch.cli_path` — full path to TwitchDownloaderCLI on your machine
+
+### 7. Start & Verify
+
+Windows doesn't support `start.sh`, so run the backend and frontend in separate terminals:
+
+**Terminal 1 (Backend):**
+```
 cd backend
-source venv/bin/activate
+venv\Scripts\activate
 uvicorn main:app --reload
 ```
 
-The API will be available at http://localhost:8000
-
-### Start the Frontend
-
-```bash
+**Terminal 2 (Frontend):**
+```
 cd frontend
 npm run dev
 ```
 
-The UI will be available at http://localhost:3000
+Verify everything works:
+```
+curl http://localhost:8000/health
+```
+
+Trigger the automation pipeline manually:
+```
+curl -X POST http://localhost:8000/api/automation/run
+```
+
+- Backend: http://localhost:8000
+- Frontend: http://localhost:3000
+
+### 8. How It Works
+
+The automation scheduler runs every 2 hours (configurable in `config.json`). Each run:
+
+1. Checks configured Twitch channels for new VODs
+2. Analyzes and downloads the top clips per VOD
+3. Converts clips to vertical format for mobile
+4. Delivers clips to your Telegram chat
+5. Cleans up temporary files
+
+Both the backend and frontend must be running for automation to work.
+
+### 9. Pi Notifier (Optional)
+
+The Pi notifier is a lightweight service that runs on a Raspberry Pi and triggers the ClipDetector pipeline immediately when a monitored stream goes offline, instead of waiting for the next scheduler cycle.
+
+On the Pi, set the environment variable:
+```
+CLIPDETECTOR_URL=http://<your-laptop-ip>:8000
+```
+
+See [pi-notifier/README.md](pi-notifier/README.md) for build, deploy, and systemd service instructions.
 
 ## Usage
 

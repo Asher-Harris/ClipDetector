@@ -38,6 +38,7 @@ from services.twitch import TwitchClient, VodStorage, parse_duration_to_seconds
 from services.downloader import TwitchDownloader
 from services.pipeline import run_automation_pipeline
 from services.scheduler import get_job_info, setup_scheduler, stop_scheduler
+from services.telegram import deliver_ready_clips
 
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
@@ -68,6 +69,9 @@ async def lifespan(app: FastAPI):
                 )
                 _pipeline_results.insert(0, result.to_dict())
                 del _pipeline_results[10:]
+                if result.vods_processed > 0:
+                    clips_dir = Path(__file__).parent.parent / "data" / "clips"
+                    await deliver_ready_clips(storage, clips_dir)
             finally:
                 _pipeline_running = False
 
@@ -2113,6 +2117,9 @@ async def automation_run():
             )
             _pipeline_results.insert(0, result.to_dict())
             del _pipeline_results[10:]
+            if result.vods_processed > 0:
+                clips_dir = Path(__file__).parent.parent / "data" / "clips"
+                await deliver_ready_clips(storage, clips_dir)
         finally:
             _pipeline_running = False
 
