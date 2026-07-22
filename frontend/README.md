@@ -1,36 +1,41 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ClipDetector frontend
 
-## Getting Started
+This is the Next.js review interface for ClipDetector. It expects the FastAPI backend to be running at `http://localhost:8000`.
 
-First, run the development server:
+For full project and platform setup, see [the development guide](../docs/DEVELOPMENT.md).
+
+## Install
+
+```bash
+npm ci
+```
+
+Node.js 20.9 or newer is required. `npm ci` uses the committed lockfile and removes stale packages from an older installation.
+
+## Develop
+
+Start the backend in another terminal, then run:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open <http://localhost:3000>. Source pages live in `src/app/`, reusable components in `src/components/`, and browser-side API calls in `src/lib/api.ts`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+If the backend is not on `http://localhost:8000`, set `NEXT_PUBLIC_API_BASE_URL` before starting or building the frontend.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Checks
 
-## Learn More
+```bash
+npm run build
+npm run lint
+```
 
-To learn more about Next.js, take a look at the following resources:
+Both checks should complete without warnings or errors.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Useful routes
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `/` — local VOD analysis
+- `/vods` — Twitch VOD browser and downloads
+- `/review` — candidate review
+- `/clips` — exported clips

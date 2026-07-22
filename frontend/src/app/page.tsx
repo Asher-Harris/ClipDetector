@@ -23,7 +23,7 @@ import type { Profile, ProfileCreateRequest, SelectOption, TwitchVod } from "@/l
 export default function Home() {
   const router = useRouter();
   const { addToast } = useToast();
-  const { setAnalysisResult, analysisResult } = useApp();
+  const { setAnalysisResult } = useApp();
 
   const [isHealthy, setIsHealthy] = useState<boolean | null>(null);
   const [downloadedVods, setDownloadedVods] = useState<TwitchVod[]>([]);

@@ -6,8 +6,7 @@ import { useApp } from "@/context/AppContext";
 import { ClipList } from "@/components/ClipList";
 import { VideoPlayer } from "@/components/VideoPlayer";
 import { Timeline } from "@/components/Timeline";
-import { ExportButton } from "@/components/ExportButton";
-import { AppHeader, Button, Card } from "@/components/ui";
+import { AppHeader, Button } from "@/components/ui";
 
 export default function ReviewPage() {
   const router = useRouter();
@@ -15,7 +14,6 @@ export default function ReviewPage() {
     analysisResult,
     clipsWithStatus,
     updateTrim,
-    clearAnalysisResult,
   } = useApp();
 
   const editedClips = useMemo(

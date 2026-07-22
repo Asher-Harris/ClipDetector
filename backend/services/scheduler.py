@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
@@ -12,7 +12,7 @@ def setup_scheduler(async_func, interval_hours: int):
         hours=interval_hours,
         id="automation",
         replace_existing=True,
-        next_run_time=datetime.utcnow(),
+        next_run_time=datetime.now(timezone.utc),
     )
     _scheduler.start()
 

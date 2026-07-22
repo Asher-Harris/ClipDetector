@@ -30,6 +30,12 @@ type DownloadState = {
 
 type DownloadsMap = Record<string, DownloadState>;
 
+function withoutDownload(downloads: DownloadsMap, vodId: string): DownloadsMap {
+  const remaining = { ...downloads };
+  delete remaining[vodId];
+  return remaining;
+}
+
 type DownloadContextValue = {
   downloads: DownloadsMap;
   startDownload: (vodId: string) => void;
@@ -134,10 +140,7 @@ export function DownloadProvider({ children }: { children: ReactNode }) {
       controller.signal
     )
       .then(() => {
-        setDownloads((prev) => {
-          const { [vodId]: _, ...rest } = prev;
-          return rest;
-        });
+        setDownloads((prev) => withoutDownload(prev, vodId));
         delete abortControllersRef.current[vodId];
         activeConnectionsRef.current.delete(vodId);
       })
@@ -145,10 +148,7 @@ export function DownloadProvider({ children }: { children: ReactNode }) {
         activeConnectionsRef.current.delete(vodId);
 
         if (err instanceof DOMException && err.name === "AbortError") {
-          setDownloads((prev) => {
-            const { [vodId]: _, ...rest } = prev;
-            return rest;
-          });
+          setDownloads((prev) => withoutDownload(prev, vodId));
           return;
         }
 
@@ -157,10 +157,7 @@ export function DownloadProvider({ children }: { children: ReactNode }) {
         // If reconnecting and we get a 409 (already in progress) or 404,
         // the download may have completed - just remove from state
         if (isReconnect && (apiError.status === 409 || apiError.status === 404)) {
-          setDownloads((prev) => {
-            const { [vodId]: _, ...rest } = prev;
-            return rest;
-          });
+          setDownloads((prev) => withoutDownload(prev, vodId));
           return;
         }
 
@@ -237,19 +234,13 @@ export function DownloadProvider({ children }: { children: ReactNode }) {
     } catch {
       // Ignore errors when cancelling
     }
-    setDownloads((prev) => {
-      const { [vodId]: _, ...rest } = prev;
-      return rest;
-    });
+    setDownloads((prev) => withoutDownload(prev, vodId));
     delete abortControllersRef.current[vodId];
     activeConnectionsRef.current.delete(vodId);
   }, []);
 
   const clearError = useCallback((vodId: string) => {
-    setDownloads((prev) => {
-      const { [vodId]: _, ...rest } = prev;
-      return rest;
-    });
+    setDownloads((prev) => withoutDownload(prev, vodId));
   }, []);
 
   return (

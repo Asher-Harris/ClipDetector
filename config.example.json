@@ -1,0 +1,12 @@
+{
+  "twitch": {
+    "channels": ["channel_login"],
+    "cli_path": "TwitchDownloaderCLI"
+  },
+  "automation": {
+    "enabled": false,
+    "check_interval_hours": 2,
+    "top_clips_per_vod": 10,
+    "clip_delay_hours": 0
+  }
+}

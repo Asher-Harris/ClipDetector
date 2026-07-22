@@ -38,6 +38,8 @@ function formatDuration(seconds: number): string {
 }
 
 export function ClipPlayerModal({ clip, onClose }: ClipPlayerModalProps) {
+  const embedParent =
+    typeof window === "undefined" ? "localhost" : window.location.hostname;
   useEffect(() => {
     if (!clip) return;
 
@@ -82,7 +84,7 @@ export function ClipPlayerModal({ clip, onClose }: ClipPlayerModalProps) {
               />
             ) : twitchClip ? (
               <iframe
-                src={`https://clips.twitch.tv/embed?clip=${twitchClip.id}&parent=localhost`}
+                src={`https://clips.twitch.tv/embed?clip=${twitchClip.id}&parent=${encodeURIComponent(embedParent)}`}
                 className="w-full h-full"
                 allowFullScreen
               />

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Button, Card } from "./ui";
 import type { Profile, ProfileCreateRequest } from "@/lib/types";
 import { DEFAULT_PROFILE_VALUES, PROFILE_PARAMS } from "@/lib/types";
@@ -20,29 +20,50 @@ export function ProfileEditor({
   onSave,
   isSaving,
 }: ProfileEditorProps) {
-  const [formData, setFormData] = useState<ProfileCreateRequest>(
-    DEFAULT_PROFILE_VALUES
-  );
-
-  useEffect(() => {
-    if (profile) {
-      setFormData({
-        name: profile.name,
-        audio_weight: profile.audio_weight,
-        chat_weight: profile.chat_weight,
-        audio_threshold_multiplier: profile.audio_threshold_multiplier,
-        chat_threshold: profile.chat_threshold,
-        speech_keyword_weight: profile.speech_keyword_weight ?? DEFAULT_PROFILE_VALUES.speech_keyword_weight,
-        speech_rate_weight: profile.speech_rate_weight ?? DEFAULT_PROFILE_VALUES.speech_rate_weight,
-        clip_popular_weight: profile.clip_popular_weight ?? DEFAULT_PROFILE_VALUES.clip_popular_weight,
-        clip_density_weight: profile.clip_density_weight ?? DEFAULT_PROFILE_VALUES.clip_density_weight,
-      });
-    } else {
-      setFormData(DEFAULT_PROFILE_VALUES);
-    }
-  }, [profile, isOpen]);
-
   if (!isOpen) return null;
+
+  return (
+    <ProfileEditorForm
+      key={profile?.id ?? "new"}
+      profile={profile}
+      onClose={onClose}
+      onSave={onSave}
+      isSaving={isSaving}
+    />
+  );
+}
+
+type ProfileEditorFormProps = Omit<ProfileEditorProps, "isOpen">;
+
+function ProfileEditorForm({
+  profile,
+  onClose,
+  onSave,
+  isSaving,
+}: ProfileEditorFormProps) {
+  const [formData, setFormData] = useState<ProfileCreateRequest>(() =>
+    profile
+      ? {
+          name: profile.name,
+          audio_weight: profile.audio_weight,
+          chat_weight: profile.chat_weight,
+          audio_threshold_multiplier: profile.audio_threshold_multiplier,
+          chat_threshold: profile.chat_threshold,
+          speech_keyword_weight:
+            profile.speech_keyword_weight ??
+            DEFAULT_PROFILE_VALUES.speech_keyword_weight,
+          speech_rate_weight:
+            profile.speech_rate_weight ??
+            DEFAULT_PROFILE_VALUES.speech_rate_weight,
+          clip_popular_weight:
+            profile.clip_popular_weight ??
+            DEFAULT_PROFILE_VALUES.clip_popular_weight,
+          clip_density_weight:
+            profile.clip_density_weight ??
+            DEFAULT_PROFILE_VALUES.clip_density_weight,
+        }
+      : { ...DEFAULT_PROFILE_VALUES }
+  );
 
   const handleChange = (
     key: keyof ProfileCreateRequest,

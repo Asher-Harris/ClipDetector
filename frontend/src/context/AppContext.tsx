@@ -59,17 +59,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Load from localStorage on mount
   useEffect(() => {
-    const storedAnalysis = loadFromStorage<AnalysisResult | null>(
-      STORAGE_KEYS.ANALYSIS_RESULT,
-      null
-    );
-    const storedStatuses = loadFromStorage<ClipStatusMap>(
-      STORAGE_KEYS.CLIP_STATUSES,
-      {}
-    );
-    if (storedAnalysis) setAnalysisResultState(storedAnalysis);
-    if (storedStatuses) setClipStatuses(storedStatuses);
-    setIsHydrated(true);
+    const hydrationFrame = requestAnimationFrame(() => {
+      const storedAnalysis = loadFromStorage<AnalysisResult | null>(
+        STORAGE_KEYS.ANALYSIS_RESULT,
+        null
+      );
+      const storedStatuses = loadFromStorage<ClipStatusMap>(
+        STORAGE_KEYS.CLIP_STATUSES,
+        {}
+      );
+      if (storedAnalysis) setAnalysisResultState(storedAnalysis);
+      setClipStatuses(storedStatuses);
+      setIsHydrated(true);
+    });
+
+    return () => cancelAnimationFrame(hydrationFrame);
   }, []);
 
   // Persist to localStorage on change
@@ -117,10 +121,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const resetClipTrim = useCallback((clipId: string) => {
     setClipStatuses((prev) => {
-      const { trimStart, trimEnd, ...rest } = prev[clipId] || { status: "pending" };
+      const rest = { ...(prev[clipId] || { status: "pending" as const }) };
+      delete rest.trimStart;
+      delete rest.trimEnd;
       return {
         ...prev,
-        [clipId]: rest as ClipStatusMap[string],
+        [clipId]: rest,
       };
     });
   }, []);

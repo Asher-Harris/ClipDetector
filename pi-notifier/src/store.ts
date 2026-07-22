@@ -1,4 +1,11 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from "fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+  unlinkSync,
+} from "fs";
 import { homedir } from "os";
 import { join } from "path";
 
@@ -19,7 +26,7 @@ export interface OAuthTokens {
 
 function ensureStoreDir(): void {
   if (!existsSync(STORE_DIR)) {
-    mkdirSync(STORE_DIR, { recursive: true });
+    mkdirSync(STORE_DIR, { recursive: true, mode: 0o700 });
   }
 }
 
@@ -73,7 +80,8 @@ export function loadTokens(): OAuthTokens | null {
 
 export function saveTokens(tokens: OAuthTokens): void {
   ensureStoreDir();
-  writeFileSync(TOKENS_FILE, JSON.stringify(tokens, null, 2));
+  writeFileSync(TOKENS_FILE, JSON.stringify(tokens, null, 2), { mode: 0o600 });
+  chmodSync(TOKENS_FILE, 0o600);
 }
 
 export function clearTokens(): void {

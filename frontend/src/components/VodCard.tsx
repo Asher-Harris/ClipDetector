@@ -1,5 +1,7 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element -- Twitch CDN URLs are dynamic and intentionally bypass Next's image proxy. */
+
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import type { TwitchVod } from "@/lib/types";

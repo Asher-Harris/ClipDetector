@@ -10,6 +10,22 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
+
+from analyzers.audio import analyze_audio, AnalysisConfig as AudioConfig
+from analyzers.chat import analyze_chat, ChatConfig
+from analyzers.fusion import analyze_full, FusionConfig
+from analyzers.speech import analyze_speech, SpeechConfig
+from analyzers.clips import analyze_clips
+from services.twitch import TwitchClient, VodStorage, parse_duration_to_seconds
+from services.downloader import TwitchDownloader
+from services.pipeline import run_automation_pipeline
+from services.scheduler import get_job_info, setup_scheduler, stop_scheduler
+from services.telegram import deliver_ready_clips
 
 load_dotenv()
 
@@ -17,28 +33,6 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(levelname)s [%(name)s] %(message)s",
 )
-
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
-from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
-
-from analyzers.audio import analyze_audio, AnalysisConfig as AudioConfig, AudioSpike
-from analyzers.chat import analyze_chat, ChatConfig, ChatMoment
-from analyzers.fusion import analyze_full, FusionConfig, ClipCandidate
-from analyzers.speech import (
-    analyze_speech,
-    SpeechConfig,
-    SpeechMoment,
-    TranscriptSegment as SpeechTranscriptSegment,
-)
-from analyzers.clips import analyze_clips, ClipsConfig
-from services.twitch import TwitchClient, VodStorage, parse_duration_to_seconds
-from services.downloader import TwitchDownloader
-from services.pipeline import run_automation_pipeline
-from services.scheduler import get_job_info, setup_scheduler, stop_scheduler
-from services.telegram import deliver_ready_clips
 
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
@@ -103,7 +97,14 @@ def load_config() -> dict:
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=[
+        origin.strip()
+        for origin in os.getenv(
+            "CORS_ORIGINS",
+            "http://localhost:3000,http://127.0.0.1:3000",
+        ).split(",")
+        if origin.strip()
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -129,6 +130,8 @@ class ProfileConfig(BaseModel):
     audio_intensity_cap: float = Field(default=2.5, ge=1.0, le=10.0)
     synergy_bonus: float = Field(default=0.75, ge=0.0, le=2.0)
     min_score: float = Field(default=3.0, ge=0.0, le=50.0)
+    speech_keyword_weight: float = Field(default=1.5, ge=0.0, le=5.0)
+    speech_rate_weight: float = Field(default=1.0, ge=0.0, le=5.0)
     clip_popular_weight: float = Field(default=3.5, ge=0.0, le=5.0)
     clip_density_weight: float = Field(default=2.5, ge=0.0, le=5.0)
 
@@ -142,6 +145,8 @@ class ProfileCreateRequest(BaseModel):
     audio_intensity_cap: float = Field(default=2.5, ge=1.0, le=10.0)
     synergy_bonus: float = Field(default=0.75, ge=0.0, le=2.0)
     min_score: float = Field(default=3.0, ge=0.0, le=50.0)
+    speech_keyword_weight: float = Field(default=1.5, ge=0.0, le=5.0)
+    speech_rate_weight: float = Field(default=1.0, ge=0.0, le=5.0)
     clip_popular_weight: float = Field(default=3.5, ge=0.0, le=5.0)
     clip_density_weight: float = Field(default=2.5, ge=0.0, le=5.0)
 
@@ -155,6 +160,8 @@ class ProfileUpdateRequest(BaseModel):
     audio_intensity_cap: float | None = Field(default=None, ge=1.0, le=10.0)
     synergy_bonus: float | None = Field(default=None, ge=0.0, le=2.0)
     min_score: float | None = Field(default=None, ge=0.0, le=50.0)
+    speech_keyword_weight: float | None = Field(default=None, ge=0.0, le=5.0)
+    speech_rate_weight: float | None = Field(default=None, ge=0.0, le=5.0)
     clip_popular_weight: float | None = Field(default=None, ge=0.0, le=5.0)
     clip_density_weight: float | None = Field(default=None, ge=0.0, le=5.0)
 
@@ -171,7 +178,7 @@ def ensure_profiles_dir() -> None:
     PROFILES_DIR.mkdir(parents=True, exist_ok=True)
     default_path = PROFILES_DIR / "default.json"
     if not default_path.exists():
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         default_profile = ProfileConfig(
             id="default",
             name="Default",
@@ -194,6 +201,32 @@ def get_content_type(file_path: Path) -> str:
     return content_types.get(ext, "application/octet-stream")
 
 
+def parse_byte_range(range_header: str, file_size: int) -> tuple[int, int]:
+    """Parse a single HTTP byte range and return inclusive start/end offsets."""
+    unit, separator, value = range_header.partition("=")
+    if unit.strip().lower() != "bytes" or not separator or "," in value:
+        raise ValueError("Unsupported range")
+
+    start_text, dash, end_text = value.strip().partition("-")
+    if not dash or file_size <= 0:
+        raise ValueError("Invalid range")
+
+    try:
+        if start_text:
+            start = int(start_text)
+            end = int(end_text) if end_text else file_size - 1
+            if start < 0 or start >= file_size or end < start:
+                raise ValueError("Unsatisfiable range")
+            return start, min(end, file_size - 1)
+
+        suffix_length = int(end_text)
+        if suffix_length <= 0:
+            raise ValueError("Invalid suffix range")
+        return max(0, file_size - suffix_length), file_size - 1
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Invalid range") from exc
+
+
 @app.get("/data/vods/{filename:path}")
 async def stream_video(filename: str, request: Request):
     """Stream video with Range request support for seeking."""
@@ -202,8 +235,8 @@ async def stream_video(filename: str, request: Request):
     # Security check
     try:
         video_path = video_path.resolve()
-        data_dir_resolved = DATA_DIR.resolve()
-        if not str(video_path).startswith(str(data_dir_resolved)):
+        vods_dir_resolved = (DATA_DIR / "vods").resolve()
+        if not video_path.is_relative_to(vods_dir_resolved):
             raise HTTPException(status_code=400, detail="Invalid file path")
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid file path")
@@ -218,14 +251,14 @@ async def stream_video(filename: str, request: Request):
     range_header = request.headers.get("range")
 
     if range_header:
-        # Parse "bytes=start-end" format
-        range_match = range_header.replace("bytes=", "").split("-")
-        start = int(range_match[0]) if range_match[0] else 0
-        end = int(range_match[1]) if range_match[1] else file_size - 1
-
-        # Clamp values
-        start = max(0, min(start, file_size - 1))
-        end = max(start, min(end, file_size - 1))
+        try:
+            start, end = parse_byte_range(range_header, file_size)
+        except ValueError:
+            raise HTTPException(
+                status_code=416,
+                detail="Requested range is not satisfiable",
+                headers={"Content-Range": f"bytes */{file_size}"},
+            )
         content_length = end - start + 1
 
         def iter_file():
@@ -276,8 +309,8 @@ async def stream_clip(filename: str, request: Request):
 
     try:
         clip_path = clip_path.resolve()
-        data_dir_resolved = DATA_DIR.resolve()
-        if not str(clip_path).startswith(str(data_dir_resolved)):
+        clips_dir_resolved = (DATA_DIR / "clips").resolve()
+        if not clip_path.is_relative_to(clips_dir_resolved):
             raise HTTPException(status_code=400, detail="Invalid file path")
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid file path")
@@ -290,11 +323,14 @@ async def stream_clip(filename: str, request: Request):
     range_header = request.headers.get("range")
 
     if range_header:
-        range_match = range_header.replace("bytes=", "").split("-")
-        start = int(range_match[0]) if range_match[0] else 0
-        end = int(range_match[1]) if range_match[1] else file_size - 1
-        start = max(0, min(start, file_size - 1))
-        end = max(start, min(end, file_size - 1))
+        try:
+            start, end = parse_byte_range(range_header, file_size)
+        except ValueError:
+            raise HTTPException(
+                status_code=416,
+                detail="Requested range is not satisfiable",
+                headers={"Content-Range": f"bytes */{file_size}"},
+            )
         content_length = end - start + 1
 
         def iter_clip():
@@ -428,7 +464,7 @@ async def create_profile(request: ProfileCreateRequest):
         profile_id = f"{base_id}-{counter}"
         counter += 1
 
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
     profile = ProfileConfig(
         id=profile_id,
         name=request.name,
@@ -442,6 +478,10 @@ async def create_profile(request: ProfileCreateRequest):
         audio_intensity_cap=request.audio_intensity_cap,
         synergy_bonus=request.synergy_bonus,
         min_score=request.min_score,
+        speech_keyword_weight=request.speech_keyword_weight,
+        speech_rate_weight=request.speech_rate_weight,
+        clip_popular_weight=request.clip_popular_weight,
+        clip_density_weight=request.clip_density_weight,
     )
 
     profile_path = PROFILES_DIR / f"{profile_id}.json"
@@ -462,7 +502,7 @@ async def update_profile(profile_id: str, request: ProfileUpdateRequest):
     update_data = request.model_dump(exclude_none=True)
     updated_dict = existing.model_dump()
     updated_dict.update(update_data)
-    updated_dict["updated_at"] = datetime.utcnow().isoformat()
+    updated_dict["updated_at"] = datetime.now(timezone.utc).isoformat()
     updated = ProfileConfig(**updated_dict)
 
     profile_path.write_text(updated.model_dump_json(indent=2))
@@ -532,7 +572,7 @@ async def analyze_audio_endpoint(request: AudioAnalysisRequest):
     try:
         video_path = video_path.resolve()
         data_dir_resolved = DATA_DIR.resolve()
-        if not str(video_path).startswith(str(data_dir_resolved)):
+        if not video_path.is_relative_to(data_dir_resolved):
             raise HTTPException(status_code=400, detail="Invalid file path")
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid file path")
@@ -544,7 +584,7 @@ async def analyze_audio_endpoint(request: AudioAnalysisRequest):
         )
 
     # Build config from request
-    config = AnalysisConfig(
+    config = AudioConfig(
         threshold_multiplier=request.threshold_multiplier,
         window_seconds=request.window_seconds,
     )
@@ -588,7 +628,7 @@ async def analyze_chat_endpoint(request: ChatAnalysisRequest):
     try:
         chat_path = chat_path.resolve()
         data_dir_resolved = DATA_DIR.resolve()
-        if not str(chat_path).startswith(str(data_dir_resolved)):
+        if not chat_path.is_relative_to(data_dir_resolved):
             raise HTTPException(status_code=400, detail="Invalid file path")
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid file path")
@@ -890,7 +930,7 @@ def resolve_safe_path(relative_path: str, data_dir: Path) -> Path:
     try:
         full_path = full_path.resolve()
         data_dir_resolved = data_dir.resolve()
-        if not str(full_path).startswith(str(data_dir_resolved)):
+        if not full_path.is_relative_to(data_dir_resolved):
             raise ValueError("Path traversal detected")
     except Exception:
         raise ValueError("Invalid path")
@@ -932,23 +972,23 @@ async def analyze_full_endpoint(request: FullAnalysisRequest):
 
     # Build configs from request (use defaults if not provided)
     audio_config = AudioConfig(
-        threshold_multiplier=request.audio_threshold_multiplier or 2.5,
+        threshold_multiplier=request.audio_threshold_multiplier if request.audio_threshold_multiplier is not None else 2.5,
     )
 
     chat_config = ChatConfig(
-        threshold=request.chat_threshold or 3.0,
+        threshold=request.chat_threshold if request.chat_threshold is not None else 3.0,
     )
 
     fusion_config = FusionConfig(
         overlap_window=request.overlap_window,
         clip_buffer=request.clip_buffer,
-        audio_weight=request.audio_weight or 1.0,
-        chat_weight=request.chat_weight or 1.5,
-        audio_intensity_cap=request.audio_intensity_cap or 2.5,
-        synergy_bonus=request.synergy_bonus or 0.75,
-        min_score=request.min_score or 3.0,
-        speech_keyword_weight=request.speech_keyword_weight or 1.5,
-        speech_rate_weight=request.speech_rate_weight or 1.0,
+        audio_weight=request.audio_weight if request.audio_weight is not None else 1.0,
+        chat_weight=request.chat_weight if request.chat_weight is not None else 1.5,
+        audio_intensity_cap=request.audio_intensity_cap if request.audio_intensity_cap is not None else 2.5,
+        synergy_bonus=request.synergy_bonus if request.synergy_bonus is not None else 0.75,
+        min_score=request.min_score if request.min_score is not None else 3.0,
+        speech_keyword_weight=request.speech_keyword_weight if request.speech_keyword_weight is not None else 1.5,
+        speech_rate_weight=request.speech_rate_weight if request.speech_rate_weight is not None else 1.0,
     )
 
     speech_config = None
@@ -1045,21 +1085,21 @@ async def analyze_full_stream(request: FullAnalysisRequest):
         return StreamingResponse(error_stream(), media_type="text/event-stream")
 
     audio_config = AudioConfig(
-        threshold_multiplier=request.audio_threshold_multiplier or 2.5,
+        threshold_multiplier=request.audio_threshold_multiplier if request.audio_threshold_multiplier is not None else 2.5,
     )
     chat_config = ChatConfig(
-        threshold=request.chat_threshold or 3.0,
+        threshold=request.chat_threshold if request.chat_threshold is not None else 3.0,
     )
     fusion_config = FusionConfig(
         overlap_window=request.overlap_window,
         clip_buffer=request.clip_buffer,
-        audio_weight=request.audio_weight or 1.0,
-        chat_weight=request.chat_weight or 1.5,
-        audio_intensity_cap=request.audio_intensity_cap or 2.5,
-        synergy_bonus=request.synergy_bonus or 0.75,
-        min_score=request.min_score or 3.0,
-        speech_keyword_weight=request.speech_keyword_weight or 1.5,
-        speech_rate_weight=request.speech_rate_weight or 1.0,
+        audio_weight=request.audio_weight if request.audio_weight is not None else 1.0,
+        chat_weight=request.chat_weight if request.chat_weight is not None else 1.5,
+        audio_intensity_cap=request.audio_intensity_cap if request.audio_intensity_cap is not None else 2.5,
+        synergy_bonus=request.synergy_bonus if request.synergy_bonus is not None else 0.75,
+        min_score=request.min_score if request.min_score is not None else 3.0,
+        speech_keyword_weight=request.speech_keyword_weight if request.speech_keyword_weight is not None else 1.5,
+        speech_rate_weight=request.speech_rate_weight if request.speech_rate_weight is not None else 1.0,
     )
     speech_config = None
     if request.include_speech:
@@ -1169,7 +1209,9 @@ class ClipExportRequest(BaseModel):
     vod_path: str = Field(..., description="Path to VOD file relative to /data folder")
     start_time: float = Field(..., ge=0, description="Start timestamp in seconds")
     end_time: float = Field(..., gt=0, description="End timestamp in seconds")
-    output_filename: str = Field(..., description="Output filename (without path)")
+    output_filename: str = Field(
+        ..., min_length=1, max_length=200, description="Output filename (without path)"
+    )
 
 
 class ClipExportResponse(BaseModel):
@@ -1213,6 +1255,8 @@ async def export_clip(request: ClipExportRequest):
         c for c in request.output_filename
         if c.isalnum() or c in "._-"
     )
+    if not safe_filename.strip("._-"):
+        raise HTTPException(status_code=400, detail="Invalid output filename")
     if not safe_filename.endswith(".mp4"):
         safe_filename += ".mp4"
 
@@ -1333,7 +1377,7 @@ async def delete_local_clip(filename: str):
     try:
         resolved = file_path.resolve()
         clips_resolved = clips_dir.resolve()
-        if not str(resolved).startswith(str(clips_resolved)):
+        if not resolved.is_relative_to(clips_resolved):
             raise HTTPException(status_code=400, detail="Invalid filename")
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid filename")
@@ -1921,25 +1965,25 @@ async def analyze_vod_by_id(vod_id: str, request: VodAnalyzeRequest):
         raise HTTPException(status_code=404, detail=f"Chat file not found: {chat_path}")
 
     audio_config = AudioConfig(
-        threshold_multiplier=request.audio_threshold_multiplier or 2.5,
+        threshold_multiplier=request.audio_threshold_multiplier if request.audio_threshold_multiplier is not None else 2.5,
     )
 
     chat_config = ChatConfig(
-        threshold=request.chat_threshold or 3.0,
+        threshold=request.chat_threshold if request.chat_threshold is not None else 3.0,
     )
 
     fusion_config = FusionConfig(
         overlap_window=request.overlap_window,
         clip_buffer=request.clip_buffer,
-        audio_weight=request.audio_weight or 1.0,
-        chat_weight=request.chat_weight or 1.5,
-        audio_intensity_cap=request.audio_intensity_cap or 2.5,
-        synergy_bonus=request.synergy_bonus or 0.75,
-        min_score=request.min_score or 3.0,
-        speech_keyword_weight=request.speech_keyword_weight or 1.5,
-        speech_rate_weight=request.speech_rate_weight or 1.0,
-        clip_popular_weight=request.clip_popular_weight or 3.5,
-        clip_density_weight=request.clip_density_weight or 2.5,
+        audio_weight=request.audio_weight if request.audio_weight is not None else 1.0,
+        chat_weight=request.chat_weight if request.chat_weight is not None else 1.5,
+        audio_intensity_cap=request.audio_intensity_cap if request.audio_intensity_cap is not None else 2.5,
+        synergy_bonus=request.synergy_bonus if request.synergy_bonus is not None else 0.75,
+        min_score=request.min_score if request.min_score is not None else 3.0,
+        speech_keyword_weight=request.speech_keyword_weight if request.speech_keyword_weight is not None else 1.5,
+        speech_rate_weight=request.speech_rate_weight if request.speech_rate_weight is not None else 1.0,
+        clip_popular_weight=request.clip_popular_weight if request.clip_popular_weight is not None else 3.5,
+        clip_density_weight=request.clip_density_weight if request.clip_density_weight is not None else 2.5,
     )
 
     speech_config = None
@@ -2128,7 +2172,7 @@ async def automation_run():
 
 
 @app.get("/api/automation/ready-clips")
-async def automation_ready_clips():
+async def automation_ready_clips(request: Request):
     storage = VodStorage(VODS_STORAGE_PATH)
     clips_dir = DATA_DIR / "clips"
     ready = storage.get_ready_clips()
@@ -2144,7 +2188,7 @@ async def automation_ready_clips():
             "channel": item["channel_login"],
             "vod_title": item["vod_title"],
             "file_size": stat.st_size,
-            "url": f"http://localhost:8000/data/clips/{filename}",
+            "url": str(request.url_for("stream_clip", filename=filename)),
             "created_at": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
         })
     return result

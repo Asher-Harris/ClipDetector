@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { AppHeader, Spinner } from "@/components/ui";
 import { VodCard } from "@/components/VodCard";
 import { refreshTwitchVods, type ApiError } from "@/lib/api";
@@ -23,7 +23,7 @@ export default function VodsPage() {
   const [selectedChannel, setSelectedChannel] = useState<string | null>(null);
   const [showDownloadedOnly, setShowDownloadedOnly] = useState(false);
 
-  const loadVods = async () => {
+  const loadVods = useCallback(async () => {
     try {
       const data = await refreshTwitchVods();
       setChannels(data.channels);
@@ -34,11 +34,14 @@ export default function VodsPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [addToast]);
 
   useEffect(() => {
-    loadVods();
-  }, []);
+    const loadFrame = requestAnimationFrame(() => {
+      void loadVods();
+    });
+    return () => cancelAnimationFrame(loadFrame);
+  }, [loadVods]);
 
   const filteredVods = vods
     .filter((v) => !selectedChannel || v.channel_login === selectedChannel)

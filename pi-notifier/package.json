@@ -4,10 +4,10 @@
   "type": "module",
   "scripts": {
     "start": "bun --env-file=.env run src/index.ts",
-    "test": "bun --env-file=.env run src/index.ts --test",
+    "test:discord": "bun --env-file=.env run src/index.ts --test-discord",
     "build:node": "bun build src/index.ts --outfile=notifier.js --target=node"
   },
   "dependencies": {
-    "ws": "^8.18.0"
+    "ws": "8.21.1"
   }
 }

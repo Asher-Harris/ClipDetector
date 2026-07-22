@@ -1,76 +1,9 @@
 "use client";
 
-import React, { useRef, useCallback, useState, useEffect, memo } from "react";
+import React, { useRef, useCallback, useState, useEffect } from "react";
 import { getVideoUrl } from "@/lib/api";
 import { formatTime } from "@/lib/format";
 import { Spinner } from "./ui";
-
-interface WaveformProps {
-  blob: Blob;
-  width: number;
-  height: number;
-  color?: string;
-}
-
-const WAVEFORM_SAMPLES = 2000;
-
-const Waveform = memo(function Waveform({ blob, width, height, color = "#9147ff" }: WaveformProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [waveformData, setWaveformData] = useState<number[] | null>(null);
-
-  useEffect(() => {
-    const analyzeAudio = async () => {
-      try {
-        const audioContext = new AudioContext();
-        const arrayBuffer = await blob.arrayBuffer();
-        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-
-        const channelData = audioBuffer.getChannelData(0);
-        const blockSize = Math.floor(channelData.length / WAVEFORM_SAMPLES);
-        const peaks: number[] = [];
-
-        for (let i = 0; i < WAVEFORM_SAMPLES; i++) {
-          const start = i * blockSize;
-          let max = 0;
-          for (let j = 0; j < blockSize; j++) {
-            const absValue = Math.abs(channelData[start + j] || 0);
-            if (absValue > max) max = absValue;
-          }
-          peaks.push(max);
-        }
-
-        setWaveformData(peaks);
-        audioContext.close();
-      } catch {
-        // Audio decode failed - video might not have audio track
-      }
-    };
-
-    analyzeAudio();
-  }, [blob]);
-
-  useEffect(() => {
-    if (!canvasRef.current || !waveformData) return;
-
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    ctx.clearRect(0, 0, width, height);
-    ctx.fillStyle = color;
-
-    const barWidth = width / waveformData.length;
-    const centerY = height / 2;
-
-    waveformData.forEach((peak, i) => {
-      const barHeight = peak * height * 0.9;
-      const x = i * barWidth;
-      ctx.fillRect(x, centerY - barHeight / 2, Math.max(1, barWidth - 1), barHeight);
-    });
-  }, [waveformData, width, height, color]);
-
-  return <canvas ref={canvasRef} width={width} height={height} className="w-full h-full" />;
-});
 
 interface VideoPlayerProps {
   vodPath: string;
@@ -111,9 +44,9 @@ function VideoPlayerInner({
   const [duration, setDuration] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [internalTime, setInternalTime] = useState(0);
-  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const lastSeekTime = useRef<number | null>(null);
   const prevExternalTimeRef = useRef<number>(currentTime);
+  const prevTimeRef = useRef(currentTime);
 
   const [dragState, setDragState] = useState<{
     isDragging: boolean;
@@ -157,35 +90,15 @@ function VideoPlayerInner({
 
   const timeToGlobalPercent = (time: number) => (duration > 0 ? (time / duration) * 100 : 0);
 
-  useEffect(() => {
-    const fetchAudioBlob = async () => {
-      try {
-        const response = await fetch(videoUrl);
-        const blob = await response.blob();
-        setAudioBlob(blob);
-      } catch {
-        // Silently fail - waveform is optional
-      }
-    };
-    fetchAudioBlob();
-  }, [videoUrl]);
-
-  useEffect(() => {
-    if (zoom > 1 && duration > 0) {
-      const playheadPercent = (internalTime / duration) * 100;
-      setViewportCenter(playheadPercent);
-    }
-  }, [zoom, internalTime, duration]);
-
   const timeToViewportPercent = (time: number) => {
     const globalPercent = timeToGlobalPercent(time);
     return ((globalPercent - viewportStart) / visiblePercent) * 100;
   };
 
-  const viewportPercentToTime = (viewportPercent: number) => {
+  const viewportPercentToTime = useCallback((viewportPercent: number) => {
     const globalPercent = viewportStart + (viewportPercent / 100) * visiblePercent;
     return (globalPercent / 100) * duration;
-  };
+  }, [duration, viewportStart, visiblePercent]);
 
   const handleLoadedMetadata = useCallback(() => {
     const video = videoRef.current;
@@ -199,18 +112,37 @@ function VideoPlayerInner({
   const handleTimeUpdate = useCallback(() => {
     const video = videoRef.current;
     if (video && lastSeekTime.current === null) {
-      setInternalTime(video.currentTime);
-      onTimeUpdate(video.currentTime);
+      const nextTime = video.currentTime;
+      const crossedTrimEnd = prevTimeRef.current < trimEnd && nextTime >= trimEnd;
+      if (isPlaying && crossedTrimEnd) {
+        video.pause();
+        setIsPlaying(false);
+      }
+      prevTimeRef.current = nextTime;
+      setInternalTime(nextTime);
+      onTimeUpdate(nextTime);
+      if (zoom > 1 && duration > 0) {
+        setViewportCenter((nextTime / duration) * 100);
+      }
     }
-  }, [onTimeUpdate]);
+  }, [duration, isPlaying, onTimeUpdate, setViewportCenter, trimEnd, zoom]);
 
   const handleCanPlay = useCallback(() => setIsLoading(false), []);
   const handleWaiting = useCallback(() => setIsLoading(true), []);
   const handlePlaying = useCallback(() => setIsLoading(false), []);
   const handleSeeked = useCallback(() => {
+    const video = videoRef.current;
     lastSeekTime.current = null;
     setIsLoading(false);
-  }, []);
+    if (video) {
+      const nextTime = video.currentTime;
+      prevTimeRef.current = nextTime;
+      setInternalTime(nextTime);
+      if (zoom > 1 && duration > 0) {
+        setViewportCenter((nextTime / duration) * 100);
+      }
+    }
+  }, [duration, setViewportCenter, zoom]);
 
   const seekTo = useCallback((time: number) => {
     const video = videoRef.current;
@@ -220,8 +152,11 @@ function VideoPlayerInner({
       video.currentTime = clampedTime;
       setInternalTime(clampedTime);
       onSeek(clampedTime);
+      if (zoom > 1) {
+        setViewportCenter((clampedTime / duration) * 100);
+      }
     }
-  }, [duration, onSeek]);
+  }, [duration, onSeek, setViewportCenter, zoom]);
 
   const pendingSeekRef = useRef<number | null>(currentTime);
 
@@ -230,20 +165,33 @@ function VideoPlayerInner({
       prevExternalTimeRef.current = currentTime;
       if (duration > 0) {
         if (Math.abs(internalTime - currentTime) > 1) {
-          seekTo(currentTime);
+          const video = videoRef.current;
+          if (video) {
+            const clampedTime = Math.max(0, Math.min(duration, currentTime));
+            lastSeekTime.current = clampedTime;
+            video.currentTime = clampedTime;
+          }
         }
       } else {
         pendingSeekRef.current = currentTime;
       }
     }
-  }, [currentTime, duration, internalTime, seekTo]);
+  }, [currentTime, duration, internalTime]);
 
   useEffect(() => {
     if (duration > 0 && pendingSeekRef.current !== null) {
-      seekTo(pendingSeekRef.current);
+      const video = videoRef.current;
+      if (video) {
+        const clampedTime = Math.max(
+          0,
+          Math.min(duration, pendingSeekRef.current)
+        );
+        lastSeekTime.current = clampedTime;
+        video.currentTime = clampedTime;
+      }
       pendingSeekRef.current = null;
     }
-  }, [duration, seekTo]);
+  }, [duration]);
 
   const handleMouseMove = useCallback((e: MouseEvent) => {
     if (!dragState.isDragging || !progressRef.current || duration === 0) return;
@@ -265,7 +213,7 @@ function VideoPlayerInner({
       seekTo(time);
       onTimeUpdate(time);
     }
-  }, [dragState, duration, trimStart, trimEnd, onTrimStartChange, onTrimEndChange, seekTo, onTimeUpdate, viewportStart, visiblePercent]);
+  }, [dragState, duration, trimStart, trimEnd, onTrimStartChange, onTrimEndChange, seekTo, onTimeUpdate, viewportPercentToTime]);
 
   const SNAP_THRESHOLD_PERCENT = 2;
 
@@ -313,7 +261,7 @@ function VideoPlayerInner({
     const time = viewportPercentToTime(viewportPercent);
     seekTo(time);
     onTimeUpdate(time);
-  }, [dragState.isDragging, duration, seekTo, onTimeUpdate, viewportStart, visiblePercent]);
+  }, [dragState.isDragging, duration, seekTo, onTimeUpdate, viewportPercentToTime]);
 
   const startDrag = (target: "start" | "end" | "playhead") => (e: React.MouseEvent) => {
     e.preventDefault();
@@ -352,16 +300,6 @@ function VideoPlayerInner({
       }
     }
   }, [isPlaying, internalTime]);
-
-  const prevTimeRef = useRef(internalTime);
-  useEffect(() => {
-    const crossedTrimEnd = prevTimeRef.current < trimEnd && internalTime >= trimEnd;
-    if (isPlaying && crossedTrimEnd) {
-      videoRef.current?.pause();
-      setIsPlaying(false);
-    }
-    prevTimeRef.current = internalTime;
-  }, [isPlaying, internalTime, trimEnd]);
 
   const skip = useCallback((seconds: number) => {
     const newTime = Math.max(0, Math.min(duration, internalTime + seconds));
@@ -477,23 +415,6 @@ function VideoPlayerInner({
           className="relative h-12 cursor-pointer select-none overflow-hidden rounded-md bg-bg-overlay"
           onClick={handleProgressClick}
         >
-          {audioBlob && (
-            <div
-              className="absolute top-0 bottom-0 flex items-center opacity-30 pointer-events-none"
-              style={{
-                width: `${zoom * 100}%`,
-                left: `${-viewportStart * zoom}%`,
-              }}
-            >
-              <Waveform
-                blob={audioBlob}
-                width={WAVEFORM_SAMPLES}
-                height={48}
-                color="#9147ff"
-              />
-            </div>
-          )}
-
           <div
             className="absolute top-0 bottom-0 bg-accent/15"
             style={{
@@ -680,42 +601,5 @@ function VideoPlayerInner({
 }
 
 export function VideoPlayer(props: VideoPlayerProps) {
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  if (!mounted) {
-    return (
-      <div className="bg-bg-surface border border-border-default rounded-lg overflow-hidden">
-        <div className="relative aspect-video flex items-center justify-center bg-bg-base">
-          <Spinner size="lg" />
-        </div>
-        <div className="p-4 space-y-3">
-          <div className="h-12 bg-bg-overlay rounded-md" />
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5">
-              <div className="w-8 h-8 bg-bg-overlay rounded" />
-              <div className="w-8 h-6 bg-bg-overlay rounded" />
-              <div className="w-8 h-8 bg-bg-overlay rounded-full" />
-              <div className="w-8 h-6 bg-bg-overlay rounded" />
-              <div className="w-8 h-8 bg-bg-overlay rounded" />
-            </div>
-            <div className="flex gap-2">
-              <div className="w-24 h-4 bg-bg-overlay rounded" />
-              <div className="w-32 h-4 bg-bg-overlay rounded" />
-            </div>
-            <div className="flex gap-1">
-              <div className="w-8 h-8 bg-bg-overlay rounded" />
-              <div className="w-8 h-8 bg-bg-overlay rounded" />
-              <div className="w-8 h-8 bg-bg-overlay rounded" />
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return <VideoPlayerInner {...props} />;
 }

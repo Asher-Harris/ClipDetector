@@ -284,7 +284,6 @@ export function createEventSubConnection(
   let sessionId: string | null = null;
   let keepaliveTimeoutId: ReturnType<typeof setTimeout> | null = null;
   let reconnectTimeoutId: ReturnType<typeof setTimeout> | null = null;
-  let subscribedUserIds: Set<string> = new Set();
   let shouldReconnect = true;
 
   function resetKeepaliveTimeout(timeoutSeconds: number) {
@@ -322,26 +321,34 @@ export function createEventSubConnection(
       return;
     }
 
-    subscribedUserIds.add(userId);
     console.log(`Subscribed to stream.offline for user ${userId}`);
   }
 
-  function connect() {
-    ws = new WebSocket(EVENTSUB_WS);
+  function connect(url = EVENTSUB_WS, isSessionReconnect = false) {
+    const socket = new WebSocket(url);
+    ws = socket;
 
-    ws.onopen = () => {
+    socket.onopen = () => {
       console.log("EventSub WebSocket connected");
     };
 
-    ws.onmessage = async (event) => {
-      const message = JSON.parse(event.data.toString());
+    socket.onmessage = async (event) => {
+      let message;
+      try {
+        message = JSON.parse(event.data.toString());
+      } catch {
+        handlers.onError(new Error("Twitch EventSub sent invalid JSON"));
+        return;
+      }
       const messageType = message.metadata?.message_type;
 
       if (messageType === "session_welcome") {
         sessionId = message.payload.session.id;
         const keepaliveTimeout = message.payload.session.keepalive_timeout_seconds;
         resetKeepaliveTimeout(keepaliveTimeout);
-        handlers.onConnected();
+        if (!isSessionReconnect) {
+          handlers.onConnected();
+        }
       } else if (messageType === "session_keepalive") {
         resetKeepaliveTimeout(message.payload?.session?.keepalive_timeout_seconds || 10);
       } else if (messageType === "notification") {
@@ -355,19 +362,20 @@ export function createEventSubConnection(
       } else if (messageType === "session_reconnect") {
         const reconnectUrl = message.payload.session.reconnect_url;
         console.log(`Reconnecting to ${reconnectUrl}`);
-        ws?.close();
-        ws = new WebSocket(reconnectUrl);
+        connect(reconnectUrl, true);
       }
     };
 
-    ws.onerror = (error) => {
+    socket.onerror = (error) => {
       handlers.onError(new Error(`WebSocket error: ${error}`));
     };
 
-    ws.onclose = () => {
+    socket.onclose = () => {
+      if (socket !== ws) {
+        return;
+      }
       console.log("EventSub WebSocket closed");
       sessionId = null;
-      subscribedUserIds.clear();
       if (keepaliveTimeoutId) {
         clearTimeout(keepaliveTimeoutId);
       }

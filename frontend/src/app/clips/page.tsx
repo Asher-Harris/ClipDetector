@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { AppHeader, Spinner, ConfirmDialog } from "@/components/ui";
 import { LocalClipCard } from "@/components/LocalClipCard";
 import { ClipPlayerModal } from "@/components/ClipPlayerModal";
@@ -42,7 +42,7 @@ export default function ClipsPage() {
   const [clipToDelete, setClipToDelete] = useState<LocalClip | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
@@ -54,11 +54,14 @@ export default function ClipsPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    loadData();
-  }, []);
+    const loadFrame = requestAnimationFrame(() => {
+      void loadData();
+    });
+    return () => cancelAnimationFrame(loadFrame);
+  }, [loadData]);
 
   const PAGE_SIZE = 24;
   const sortedClips = sortClips(clips, sortKey);

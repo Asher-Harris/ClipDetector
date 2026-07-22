@@ -25,5 +25,5 @@ data/twitch/*
 # Claude
 .claude/
 
-# Config
-*config.json
+# Local configuration (the tracked example remains available to new clones)
+/config.json

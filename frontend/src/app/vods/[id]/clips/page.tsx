@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+/* eslint-disable @next/next/no-img-element -- Twitch CDN URLs are dynamic and intentionally bypass Next's image proxy. */
+
+import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { AppHeader, Spinner, ConfirmDialog } from "@/components/ui";
@@ -72,7 +74,7 @@ export default function VodClipsPage() {
   const [clipToDelete, setClipToDelete] = useState<TwitchClip | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
@@ -88,11 +90,14 @@ export default function VodClipsPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [vodId]);
 
   useEffect(() => {
-    loadData();
-  }, [vodId]);
+    const loadFrame = requestAnimationFrame(() => {
+      void loadData();
+    });
+    return () => cancelAnimationFrame(loadFrame);
+  }, [loadData]);
 
   const PAGE_SIZE = 24;
   const downloadedCount = clips.filter((c) => c.downloaded).length;

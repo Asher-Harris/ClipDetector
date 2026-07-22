@@ -58,6 +58,8 @@ CLIPDETECTOR_URL=http://192.168.x.x:8000
 bun run start
 ```
 
+To send a one-off test DM after configuration, run `bun run test:discord`.
+
 ## Deploy to Raspberry Pi
 
 1. Build for Node.js:

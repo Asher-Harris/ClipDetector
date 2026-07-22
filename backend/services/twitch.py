@@ -1,4 +1,5 @@
 import json
+import os
 import re
 import time
 from dataclasses import dataclass
@@ -179,8 +180,12 @@ class VodStorage:
             return json.load(f)
 
     def save(self, data: dict) -> None:
-        with open(self.storage_path, "w") as f:
+        temp_path = self.storage_path.with_suffix(f"{self.storage_path.suffix}.tmp")
+        with open(temp_path, "w") as f:
             json.dump(data, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        temp_path.replace(self.storage_path)
 
     def get_vod(self, vod_id: str) -> dict | None:
         data = self.load()

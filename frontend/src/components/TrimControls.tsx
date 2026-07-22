@@ -40,7 +40,6 @@ export function TrimControls({
   const isModified = trimStart !== originalStart || trimEnd !== originalEnd;
 
   const timeToPercent = (time: number) => (time / duration) * 100;
-  const percentToTime = (percent: number) => (percent / 100) * duration;
 
   const handleMouseDown = (target: "start" | "end") => (e: React.MouseEvent) => {
     e.preventDefault();
@@ -55,7 +54,7 @@ export function TrimControls({
       const rect = containerRef.current.getBoundingClientRect();
       const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
       const percent = (x / rect.width) * 100;
-      const time = percentToTime(percent);
+      const time = (percent / 100) * duration;
 
       if (dragState.target === "start") {
         const constrainedTime = Math.max(0, Math.min(time, trimEnd - MIN_CLIP_DURATION));
@@ -89,7 +88,7 @@ export function TrimControls({
     if (!rect) return;
     const x = e.clientX - rect.left;
     const percent = (x / rect.width) * 100;
-    const time = percentToTime(percent);
+    const time = (percent / 100) * duration;
     onSeek(time);
   };
 

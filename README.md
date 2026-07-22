@@ -12,7 +12,40 @@ ClipDetector processes locally downloaded Twitch VODs (video files + JSON chat l
 
 When a clip-worthy moment is detected, the system grabs 30 seconds before and after the timestamp. Candidates are surfaced in a web UI for review, trimming, and export.
 
-## Project Structure
+## Quick start
+
+ClipDetector requires Python 3.12, Node.js 20.9 or newer, FFmpeg, and optionally TwitchDownloaderCLI. Complete platform-specific installation, credential, verification, and troubleshooting instructions are in the **[development setup guide](docs/DEVELOPMENT.md)**.
+
+For a new macOS checkout with prerequisites already installed:
+
+```bash
+# Backend dependencies
+cd backend
+python3.12 -m venv venv
+source venv/bin/activate
+python -m pip install -r requirements.txt
+python -m pip check
+
+# Frontend dependencies
+cd ../frontend
+npm ci
+
+# Local configuration (these checks preserve existing local settings)
+cd ..
+test -f backend/.env || cp backend/.env.example backend/.env
+test -f config.json || cp config.example.json config.json
+
+# Start both services
+./start.sh
+```
+
+Fill in `backend/.env` and update `config.json` before using Twitch features. The example configuration leaves automation off so the first startup does not immediately download or process VODs.
+
+- Frontend: <http://localhost:3000>
+- Backend: <http://localhost:8000>
+- Health check: <http://localhost:8000/health>
+
+## Project structure
 
 ```
 ClipDetector/
@@ -23,8 +56,7 @@ ClipDetector/
 │       ├── audio.py      # Audio spike detection
 │       ├── chat.py       # Chat hype moment detection
 │       ├── speech.py     # Speech transcription + keyword detection
-│       ├── fusion.py     # Signal fusion and clip ranking
-│       └── lipsync.py    # Lip-sync video generation
+│       └── fusion.py     # Signal fusion and clip ranking
 ├── frontend/             # Next.js React frontend
 │   └── src/app/          # App router pages (/, /review)
 ├── data/                 # Local data storage (git-ignored)
@@ -35,122 +67,9 @@ ClipDetector/
 └── README.md
 ```
 
-## Prerequisites
+## Automation
 
-Download and install each of these before starting:
-
-- **Python 3.12** — [python.org/downloads](https://www.python.org/downloads/release/python-3120/). Must be 3.12, not 3.13+ (`onnxruntime` doesn't support it yet). During install, check **"Add Python to PATH"**.
-- **Node.js 18+** — [nodejs.org](https://nodejs.org/). LTS version recommended.
-- **FFmpeg** — [gyan.dev/ffmpeg/builds](https://www.gyan.dev/ffmpeg/builds/). Download the "essentials" build, extract it, and add the `bin/` folder to your system PATH.
-- **TwitchDownloaderCLI** — [GitHub releases](https://github.com/lay295/TwitchDownloader/releases). Download the Windows x64 zip, extract it, and place it somewhere on PATH (e.g. `C:\Tools\`).
-- **Git** — [git-scm.com](https://git-scm.com/download/win).
-
-## Windows Setup
-
-### 1. Clone the Repository
-
-```
-git clone https://github.com/Asher-Harris/ClipDetector.git
-cd ClipDetector
-```
-
-### 2. Backend Setup
-
-```
-cd backend
-python -m venv venv
-venv\Scripts\activate
-pip install -r requirements.txt
-```
-
-### 3. Credentials
-
-Copy `backend/.env.example` to `backend/.env` and fill in your values:
-
-```
-TWITCH_CLIENT_ID=your_client_id
-TWITCH_CLIENT_SECRET=your_client_secret
-ANTHROPIC_API_KEY=your_api_key
-TELEGRAM_BOT_TOKEN=your_bot_token
-TELEGRAM_CHAT_ID=your_chat_id
-```
-
-- Twitch credentials: [dev.twitch.tv/console](https://dev.twitch.tv/console) — register an app to get client ID and secret
-- Anthropic API key: [console.anthropic.com](https://console.anthropic.com)
-- Telegram setup: see step 4
-
-### 4. Telegram Bot
-
-ClipDetector delivers finished clips to a Telegram chat automatically.
-
-1. Open Telegram and message [@BotFather](https://t.me/BotFather) → send `/newbot` → follow the prompts → save the token
-2. Create a group or channel in Telegram and add your new bot to it
-3. Get the chat ID: add [@userinfobot](https://t.me/userinfobot) to the group, it will reply with the chat ID
-4. Enable group messages: message @BotFather → `/setprivacy` → select your bot → **Disable** → remove and re-add the bot to the group
-5. Add `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` to `backend/.env`
-
-### 5. Frontend Setup
-
-```
-cd frontend
-npm install
-```
-
-### 6. Configuration
-
-Edit `config.json` in the project root:
-
-```json
-{
-  "twitch": {
-    "channels": ["jynxzi", "caseoh_"],
-    "cli_path": "C:\\Tools\\TwitchDownloaderCLI.exe"
-  },
-  "automation": {
-    "enabled": true,
-    "check_interval_hours": 2,
-    "top_clips_per_vod": 10,
-    "clip_delay_hours": 0
-  }
-}
-```
-
-- `twitch.channels` — Twitch channel logins to monitor
-- `twitch.cli_path` — full path to TwitchDownloaderCLI on your machine
-
-### 7. Start & Verify
-
-Windows doesn't support `start.sh`, so run the backend and frontend in separate terminals:
-
-**Terminal 1 (Backend):**
-```
-cd backend
-venv\Scripts\activate
-uvicorn main:app --reload
-```
-
-**Terminal 2 (Frontend):**
-```
-cd frontend
-npm run dev
-```
-
-Verify everything works:
-```
-curl http://localhost:8000/health
-```
-
-Trigger the automation pipeline manually:
-```
-curl -X POST http://localhost:8000/api/automation/run
-```
-
-- Backend: http://localhost:8000
-- Frontend: http://localhost:3000
-
-### 8. How It Works
-
-The automation scheduler runs every 2 hours (configurable in `config.json`). Each run:
+When enabled, the automation pipeline runs immediately when the backend starts and then every two hours by default (configurable in `config.json`). Each run:
 
 1. Checks configured Twitch channels for new VODs
 2. Analyzes and downloads the top clips per VOD
@@ -158,9 +77,9 @@ The automation scheduler runs every 2 hours (configurable in `config.json`). Eac
 4. Delivers clips to your Telegram chat
 5. Cleans up temporary files
 
-Both the backend and frontend must be running for automation to work.
+The backend must remain running for scheduled automation. The frontend is only needed for browser-based review and control.
 
-### 9. Pi Notifier (Optional)
+## Pi notifier (optional)
 
 The Pi notifier is a lightweight service that runs on a Raspberry Pi and triggers the ClipDetector pipeline immediately when a monitored stream goes offline, instead of waiting for the next scheduler cycle.
 
@@ -179,8 +98,7 @@ See [pi-notifier/README.md](pi-notifier/README.md) for build, deploy, and system
 4. Open http://localhost:3000 and select your VOD and chat files
 5. Run analysis to detect clip candidates
 6. Review candidates at `/review` - approve or reject clips
-7. Click "Finalize" to review approved clips one-by-one at `/finalize`
-9. Export finalized clips to `data/clips/`
+7. Review and export approved clips to `data/clips/`
 
 ## API Endpoints
 

@@ -5,12 +5,19 @@ https://github.com/lay295/TwitchDownloader
 
 ## Installation (macOS Apple Silicon)
 
-- Downloaded the `arm64` binary from the releases page
-- Approved in **System Settings → Privacy & Security** (clicked "Allow Anyway")
-- Moved to PATH for global access:
+- Download the `arm64` CLI binary from the [TwitchDownloader releases](https://github.com/lay295/TwitchDownloader/releases). Do not use the x64 build on an Apple Silicon Mac.
+- Make the downloaded file executable: `chmod +x TwitchDownloaderCLI`.
+- Run it once. If macOS blocks it, approve it in **System Settings → Privacy & Security → Open Anyway**.
+- Move it to a directory on `PATH`:
   ```bash
   sudo mv TwitchDownloaderCLI /usr/local/bin/
   ```
+- Verify the installation:
+  ```bash
+  TwitchDownloaderCLI --version
+  command -v TwitchDownloaderCLI
+  ```
+- Put the path printed by `command -v` in the root `config.json` as `twitch.cli_path`.
 
 ## Dependencies
 

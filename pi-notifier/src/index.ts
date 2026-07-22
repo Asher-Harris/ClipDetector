@@ -10,7 +10,7 @@ import {
   type TwitchUser,
 } from "./twitch";
 
-const TEST_MODE = process.argv.includes("--test");
+const TEST_DISCORD = process.argv.includes("--test-discord");
 
 const TWITCH_CLIENT_ID = process.env.TWITCH_CLIENT_ID!;
 const TWITCH_CLIENT_SECRET = process.env.TWITCH_CLIENT_SECRET!;
@@ -85,7 +85,10 @@ function startVODPolling(userId: string, userLogin: string) {
 
   console.log(`Starting VOD polling for ${userLogin}`);
 
+  let checkInProgress = false;
   const check = async () => {
+    if (checkInProgress) return;
+    checkInProgress = true;
     try {
       const vod = await checkForNewVOD(userId, userLogin);
       if (vod) {
@@ -94,6 +97,8 @@ function startVODPolling(userId: string, userLogin: string) {
       }
     } catch (error) {
       console.error(`Error checking VOD for ${userLogin}:`, error);
+    } finally {
+      checkInProgress = false;
     }
   };
 
@@ -143,7 +148,7 @@ async function runTest() {
 async function main() {
   validateEnv();
 
-  if (TEST_MODE) {
+  if (TEST_DISCORD) {
     return runTest();
   }
 

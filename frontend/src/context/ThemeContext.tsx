@@ -1,6 +1,13 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
 
 type Theme = "dark" | "light";
 
@@ -13,6 +20,7 @@ type ThemeContextValue = {
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 const STORAGE_KEY = "clipdetector-theme";
+const THEME_CHANGE_EVENT = "clipdetector-theme-change";
 
 function getInitialTheme(): Theme {
   if (typeof window === "undefined") return "dark";
@@ -27,35 +35,46 @@ function getInitialTheme(): Theme {
   return "dark";
 }
 
+function getServerTheme(): Theme {
+  return "dark";
+}
+
+function subscribeToTheme(onStoreChange: () => void): () => void {
+  window.addEventListener("storage", onStoreChange);
+  window.addEventListener(THEME_CHANGE_EVENT, onStoreChange);
+  const mediaQuery = window.matchMedia("(prefers-color-scheme: light)");
+  mediaQuery.addEventListener("change", onStoreChange);
+
+  return () => {
+    window.removeEventListener("storage", onStoreChange);
+    window.removeEventListener(THEME_CHANGE_EVENT, onStoreChange);
+    mediaQuery.removeEventListener("change", onStoreChange);
+  };
+}
+
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>("dark");
-  const [mounted, setMounted] = useState(false);
+  const theme = useSyncExternalStore<Theme>(
+    subscribeToTheme,
+    getInitialTheme,
+    getServerTheme
+  );
 
   useEffect(() => {
-    setThemeState(getInitialTheme());
-    setMounted(true);
+    document.documentElement.setAttribute("data-theme", theme);
+  }, [theme]);
+
+  const setTheme = useCallback((newTheme: Theme) => {
+    localStorage.setItem(STORAGE_KEY, newTheme);
+    window.dispatchEvent(new Event(THEME_CHANGE_EVENT));
   }, []);
 
-  useEffect(() => {
-    if (!mounted) return;
-
-    document.documentElement.setAttribute("data-theme", theme);
-    localStorage.setItem(STORAGE_KEY, theme);
-  }, [theme, mounted]);
-
-  const toggleTheme = () => {
-    setThemeState((prev) => (prev === "dark" ? "light" : "dark"));
-  };
-
-  const setTheme = (newTheme: Theme) => {
-    setThemeState(newTheme);
-  };
+  const toggleTheme = useCallback(() => {
+    setTheme(theme === "dark" ? "light" : "dark");
+  }, [setTheme, theme]);
 
   return (
     <ThemeContext.Provider value={{ theme, toggleTheme, setTheme }}>
-      <div style={{ visibility: mounted ? "visible" : "hidden" }}>
-        {children}
-      </div>
+      {children}
     </ThemeContext.Provider>
   );
 }
