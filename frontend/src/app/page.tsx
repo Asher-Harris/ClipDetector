@@ -14,7 +14,6 @@ import {
   createProfile,
   updateProfile,
   deleteProfile,
-  type AnalysisProgress,
 } from "@/lib/api";
 import { useToast } from "@/context/ToastContext";
 import { useApp } from "@/context/AppContext";
@@ -37,7 +36,6 @@ export default function Home() {
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [includeSpeech, setIncludeSpeech] = useState(false);
   const [speechModelSize, setSpeechModelSize] = useState("base");
-  const [analysisProgress, setAnalysisProgress] = useState<AnalysisProgress | null>(null);
 
   const selectedVod = useMemo(
     () => downloadedVods.find((v) => v.id === selectedVodId),
@@ -72,7 +70,6 @@ export default function Home() {
     const speechEnabled = includeSpeech;
 
     setIsAnalyzing(true);
-    setAnalysisProgress(null);
 
     const requestParams = {
       audio_weight: profile?.audio_weight,
@@ -107,7 +104,6 @@ export default function Home() {
       addToast("error", message);
     } finally {
       setIsAnalyzing(false);
-      setAnalysisProgress(null);
     }
   };
 
@@ -236,7 +232,7 @@ export default function Home() {
         <div className="mb-8">
           <h1 className="text-xl font-semibold mb-1">New Analysis</h1>
           <p className="text-fg-muted text-sm">
-            Select files to analyze for clip-worthy moments
+            Select a downloaded VOD to find clip-worthy moments
           </p>
         </div>
 
@@ -342,25 +338,10 @@ export default function Home() {
         {/* Analysis Progress */}
         {isAnalyzing && (
           <div className="mt-6 bg-bg-surface border border-border-default rounded-lg p-4">
-            <div className="flex items-center gap-3 mb-3">
+            <div className="flex items-center gap-3">
               <Spinner size="sm" />
-              <span className="text-sm font-medium">
-                {analysisProgress?.message || "Starting analysis..."}
-              </span>
+              <span className="text-sm font-medium">Analyzing...</span>
             </div>
-            {analysisProgress && (
-              <div className="space-y-1.5">
-                <div className="w-full h-1.5 bg-bg-overlay rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-accent transition-all duration-300"
-                    style={{ width: `${analysisProgress.percent}%` }}
-                  />
-                </div>
-                <p className="text-xs text-fg-muted text-right font-mono">
-                  {analysisProgress.percent}%
-                </p>
-              </div>
-            )}
           </div>
         )}
 

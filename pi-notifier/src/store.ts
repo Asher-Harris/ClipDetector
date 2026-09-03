@@ -61,10 +61,6 @@ export function markVodAsKnown(vodId: string): void {
   }
 }
 
-export function getKnownVodIds(): string[] {
-  return loadStore().knownVodIds;
-}
-
 export function loadTokens(): OAuthTokens | null {
   ensureStoreDir();
   if (!existsSync(TOKENS_FILE)) {

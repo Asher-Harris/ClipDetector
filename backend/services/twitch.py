@@ -43,23 +43,6 @@ class TwitchChannel:
     profile_image_url: str | None = None
 
 
-@dataclass
-class TwitchVod:
-    id: str
-    channel_login: str
-    title: str
-    created_at: str
-    duration: str
-    thumbnail_url: str
-    view_count: int
-    downloaded: bool = False
-    video_filename: str | None = None
-    chat_filename: str | None = None
-    channel_display_name: str | None = None
-    channel_profile_image_url: str | None = None
-    duration_seconds: int | None = None
-
-
 class TwitchClient:
     TOKEN_URL = "https://id.twitch.tv/oauth2/token"
     HELIX_URL = "https://api.twitch.tv/helix"
@@ -231,7 +214,6 @@ class VodStorage:
                     "automation_state": "pending",
                     "automation_error": None,
                     "vertical_clips": [],
-                    "delivered_clips": [],
                     "processed_at": None,
                 })
 
@@ -278,32 +260,6 @@ class VodStorage:
             v for v in data.get("vods", [])
             if v.get("automation_state") not in ("done", "error", "processing")
         ]
-
-    def get_ready_clips(self) -> list[dict]:
-        data = self.load()
-        result = []
-        for vod in data.get("vods", []):
-            vertical_clips = vod.get("vertical_clips", [])
-            delivered_clips = set(vod.get("delivered_clips", []))
-            for filename in vertical_clips:
-                if filename not in delivered_clips:
-                    result.append({
-                        "filename": filename,
-                        "channel_login": vod.get("channel_login", ""),
-                        "vod_title": vod.get("title", ""),
-                    })
-        return result
-
-    def mark_clip_delivered(self, filename: str) -> bool:
-        data = self.load()
-        for vod in data.get("vods", []):
-            if filename in vod.get("vertical_clips", []):
-                delivered = vod.setdefault("delivered_clips", [])
-                if filename not in delivered:
-                    delivered.append(filename)
-                self.save(data)
-                return True
-        return False
 
     def list_downloaded_vods_with_channel_info(self) -> list[dict]:
         """Returns downloaded VODs with embedded channel info and computed paths."""

@@ -1,5 +1,4 @@
 import type {
-  FileListResponse,
   FullAnalysisResponse,
   ClipExportRequest,
   ClipExportResponse,
@@ -50,97 +49,6 @@ export async function checkHealth(): Promise<{ status: string; service: string }
   return apiRequest("/health");
 }
 
-export async function listFiles(): Promise<FileListResponse> {
-  return apiRequest("/api/files");
-}
-
-export type FullAnalysisRequest = {
-  video_path: string;
-  chat_path: string;
-  overlap_window?: number;
-  clip_buffer?: number;
-  audio_weight?: number;
-  chat_weight?: number;
-  audio_threshold_multiplier?: number;
-  chat_threshold?: number;
-  include_speech?: boolean;
-  speech_model_size?: string;
-  speech_language?: string;
-  speech_keyword_weight?: number;
-  speech_rate_weight?: number;
-  clip_popular_weight?: number;
-  clip_density_weight?: number;
-};
-
-export async function runFullAnalysis(
-  request: FullAnalysisRequest
-): Promise<FullAnalysisResponse> {
-  return apiRequest("/api/analyze/full", {
-    method: "POST",
-    body: JSON.stringify(request),
-  });
-}
-
-export type AnalysisProgress = {
-  stage: string;
-  percent: number;
-  message: string;
-};
-
-export async function runFullAnalysisWithProgress(
-  request: FullAnalysisRequest,
-  onProgress: (progress: AnalysisProgress) => void
-): Promise<FullAnalysisResponse> {
-  const response = await fetch(`${API_BASE}/api/analyze/full/stream`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(request),
-  });
-
-  if (!response.ok) {
-    throw { status: response.status, message: "Request failed" } as ApiError;
-  }
-
-  const reader = response.body?.getReader();
-  if (!reader) {
-    throw { status: 500, message: "No response body" } as ApiError;
-  }
-
-  const decoder = new TextDecoder();
-  let buffer = "";
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() || "";
-
-    let eventType = "";
-    for (const line of lines) {
-      if (line.startsWith("event: ")) {
-        eventType = line.slice(7);
-      } else if (line.startsWith("data: ")) {
-        const data = JSON.parse(line.slice(6));
-        if (eventType === "progress") {
-          onProgress({
-            stage: data.stage,
-            percent: data.percent,
-            message: data.message,
-          });
-        } else if (eventType === "complete") {
-          return data as FullAnalysisResponse;
-        } else if (eventType === "error") {
-          throw { status: 500, message: data.error } as ApiError;
-        }
-      }
-    }
-  }
-
-  throw { status: 500, message: "Stream ended without completion" } as ApiError;
-}
-
 // Get video URL for playback
 export function getVideoUrl(vodPath: string): string {
   return `${API_BASE}/data/${vodPath}`;
@@ -164,10 +72,6 @@ export function getClipUrl(clipPath: string): string {
 // Profile API
 export async function listProfiles(): Promise<Profile[]> {
   return apiRequest("/api/profiles");
-}
-
-export async function getProfile(id: string): Promise<Profile> {
-  return apiRequest(`/api/profiles/${id}`);
 }
 
 export async function createProfile(
@@ -196,10 +100,6 @@ export async function deleteProfile(id: string): Promise<void> {
 }
 
 // Twitch VOD API
-export async function listTwitchVods(): Promise<VodListResponse> {
-  return apiRequest("/api/twitch/vods");
-}
-
 export async function refreshTwitchVods(): Promise<VodListResponse> {
   return apiRequest("/api/twitch/vods/refresh", {
     method: "POST",

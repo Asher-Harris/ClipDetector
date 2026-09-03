@@ -22,9 +22,4 @@ export function saveToStorage<T>(key: string, value: T): void {
   }
 }
 
-export function clearStorage(key: string): void {
-  if (typeof window === "undefined") return;
-  localStorage.removeItem(key);
-}
-
 export { STORAGE_KEYS };

@@ -146,17 +146,12 @@ Edit `backend/.env` and replace the placeholder values:
 TWITCH_CLIENT_ID=your_client_id
 TWITCH_CLIENT_SECRET=your_client_secret
 ANTHROPIC_API_KEY=your_api_key
-
-# Optional: automatic Telegram delivery
-TELEGRAM_BOT_TOKEN=your_bot_token
-TELEGRAM_CHAT_ID=your_chat_id
 ```
 
-Twitch credentials are needed for fetching the VOD list and automation. The Anthropic key is needed by the automated clip-ranking pipeline. Telegram values are optional; without them, automatic delivery is skipped.
+Twitch credentials are needed for fetching the VOD list and automation. The Anthropic key is needed by the automated clip-ranking pipeline.
 
 - Create Twitch application credentials in the [Twitch developer console](https://dev.twitch.tv/console).
 - Create the Anthropic key in the [Anthropic console](https://console.anthropic.com/).
-- For optional delivery, create a Telegram bot with [BotFather](https://t.me/BotFather), add it to the destination group or channel, and put the bot token and destination chat ID in `.env`.
 
 Edit `config.json`:
 

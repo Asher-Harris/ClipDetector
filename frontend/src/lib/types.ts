@@ -21,11 +21,6 @@ export type FullAnalysisResponse = {
   config: Record<string, number>;
 };
 
-export type FileListResponse = {
-  vods: string[];
-  chats: string[];
-};
-
 // Frontend State Types
 export type ClipStatus = "pending" | "approved" | "rejected";
 
@@ -64,15 +59,6 @@ export const SIGNAL_LABELS: Record<SignalType, string> = {
   speech_rate: "Fast Talk",
   clip_popular: "Clip",
   clip_density: "Clip Density",
-};
-
-export const SIGNAL_COLORS: Record<SignalType, string> = {
-  audio: "bg-blue-500",
-  chat: "bg-purple-500",
-  speech_keyword: "bg-green-500",
-  speech_rate: "bg-yellow-500",
-  clip_popular: "bg-red-500",
-  clip_density: "bg-orange-500",
 };
 
 // Generate deterministic clip ID

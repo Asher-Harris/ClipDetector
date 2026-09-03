@@ -139,7 +139,6 @@ async def _process_vod(
             "automation_state": "done",
             "processed_at": datetime.now(timezone.utc).isoformat(),
             "vertical_clips": vertical_files,
-            "delivered_clips": vod.get("delivered_clips", []),
         })
         log.info("VOD done: %s — %d vertical clips", vod_title, len(vertical_files))
         result.vods_processed += 1

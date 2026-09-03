@@ -15,13 +15,13 @@ cd frontend && npm run dev                  # Frontend :3000
 ## API Endpoints
 
 ```
-GET  /api/config              - Get feature configuration
-POST /api/analyze/full        - Run analysis (video_path, chat_path)
+POST /api/vods/{id}/analyze   - Run analysis on a downloaded VOD
 POST /api/clips/export        - Export clip via FFmpeg (vod_path, start_time, end_time, output_filename)
 GET  /data/vods/{file}        - Stream video
 GET  /api/twitch/vods         - List cached Twitch VODs
 POST /api/twitch/vods/refresh - Fetch fresh VODs from Twitch API
 POST /api/twitch/vods/{id}/download - Download VOD + chat (SSE progress)
+POST /api/automation/run      - Trigger the automation pipeline
 ```
 
 ## Configuration

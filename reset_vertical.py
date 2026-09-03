@@ -72,7 +72,6 @@ def main():
             if not args.dry_run:
                 vod["automation_state"] = "pending"
                 vod["vertical_clips"] = []
-                vod["delivered_clips"] = []
                 vod["processed_at"] = None
                 vod["automation_error"] = None
             reset_count += 1

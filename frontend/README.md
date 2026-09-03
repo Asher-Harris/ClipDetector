@@ -35,7 +35,7 @@ Both checks should complete without warnings or errors.
 
 ## Useful routes
 
-- `/` — local VOD analysis
-- `/vods` — Twitch VOD browser and downloads
-- `/review` — candidate review
-- `/clips` — exported clips
+- `/` contains the analysis form for downloaded VODs.
+- `/vods` lists Twitch VODs and manages downloads.
+- `/review` shows candidates from the latest analysis.
+- `/clips` lists exported clips.

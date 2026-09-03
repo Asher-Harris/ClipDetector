@@ -58,11 +58,12 @@ ClipDetector/
 │       ├── speech.py     # Speech transcription + keyword detection
 │       └── fusion.py     # Signal fusion and clip ranking
 ├── frontend/             # Next.js React frontend
-│   └── src/app/          # App router pages (/, /review)
-├── data/                 # Local data storage (git-ignored)
+│   └── src/app/          # Analysis, VOD, review, and clip pages
+├── data/                 # Local VODs, chat logs, clips, and profiles
 │   ├── vods/             # Place VOD video files here
 │   ├── chats/            # Place chat JSON files here
 │   ├── clips/            # Exported clips
+├── pi-notifier/          # Optional Raspberry Pi event listener
 ├── docs/                 # Reference documentation
 └── README.md
 ```
@@ -74,8 +75,8 @@ When enabled, the automation pipeline runs immediately when the backend starts a
 1. Checks configured Twitch channels for new VODs
 2. Analyzes and downloads the top clips per VOD
 3. Converts clips to vertical format for mobile
-4. Delivers clips to your Telegram chat
-5. Cleans up temporary files
+
+Converted clips are written to `data/clips/` and reviewed from the frontend.
 
 The backend must remain running for scheduled automation. The frontend is only needed for browser-based review and control.
 
@@ -92,213 +93,53 @@ See [pi-notifier/README.md](pi-notifier/README.md) for build, deploy, and system
 
 ## Usage
 
-1. Download a Twitch VOD and its chat log
-2. Place the video file in `data/vods/`
-3. Place the chat JSON in `data/chats/`
-4. Open http://localhost:3000 and select your VOD and chat files
-5. Run analysis to detect clip candidates
-6. Review candidates at `/review` - approve or reject clips
-7. Review and export approved clips to `data/clips/`
+1. Add Twitch credentials to `backend/.env` and channel names to `config.json`.
+2. Start ClipDetector with `./start.sh`.
+3. Open <http://localhost:3000/vods>, refresh the VOD list, and download a VOD. ClipDetector downloads the matching chat log with it.
+4. Open <http://localhost:3000>, select the downloaded VOD and an analysis profile, then run the analysis.
+5. Review the candidates at <http://localhost:3000/review> and approve or reject each clip.
+6. Export approved clips. ClipDetector saves them in `data/clips/`.
 
-## API Endpoints
+## API endpoints
 
-### Health Check
+### Health check
 
 ```bash
 curl http://localhost:8000/health
 ```
 
-### Audio Analysis
+### Analysis
 
-Analyze a video file for loudness spikes:
-
-```bash
-# Basic usage (uses default thresholds)
-curl -X POST http://localhost:8000/api/analyze/audio \
-  -H "Content-Type: application/json" \
-  -d '{"file_path": "vods/my_stream.mp4"}'
-
-# With custom threshold (lower = more sensitive)
-curl -X POST http://localhost:8000/api/analyze/audio \
-  -H "Content-Type: application/json" \
-  -d '{
-    "file_path": "vods/my_stream.mp4",
-    "threshold_multiplier": 2.0,
-    "window_seconds": 10.0
-  }'
-```
-
-**Parameters:**
-- `file_path` (required): Path to video relative to `/data` folder
-- `threshold_multiplier` (default: 2.5): Spike detected when loudness exceeds average by this factor
-- `window_seconds` (default: 10.0): Rolling window for computing average loudness
-
-**Response:**
-```json
-{
-  "file_path": "vods/my_stream.mp4",
-  "spikes": [
-    {"timestamp": 125.3, "intensity": 1.8, "duration": 0.5},
-    {"timestamp": 342.1, "intensity": 2.1, "duration": 0.3}
-  ],
-  "total_spikes": 2,
-  "config": {...}
-}
-```
-
-### Chat Analysis
-
-Analyze a chat JSON file for hype moments (velocity spikes and emote floods):
+Analyze a downloaded VOD by ID. Video and chat paths are resolved from the VOD
+store, so no file paths are passed in:
 
 ```bash
-curl -X POST http://localhost:8000/api/analyze/chat \
+# Basic usage (profile defaults apply)
+curl -X POST http://localhost:8000/api/vods/{vod_id}/analyze \
   -H "Content-Type: application/json" \
-  -d '{"file_path": "chats/my_stream_chat.json"}'
-```
-
-**Parameters:**
-- `file_path` (required): Path to chat JSON file relative to `/data` folder
-
-**Response:**
-```json
-{
-  "file_path": "chats/my_stream_chat.json",
-  "moments": [
-    {
-      "timestamp": 125.5,
-      "intensity": 1.5,
-      "duration": 5.0,
-      "moment_type": "velocity_spike",
-      "details": {"messages_in_window": 45, "messages_per_second": 9.0, "baseline_per_second": 2.1}
-    },
-    {
-      "timestamp": 130.0,
-      "intensity": 1.2,
-      "duration": 5.0,
-      "moment_type": "emote_flood",
-      "details": {"messages_in_window": 28, "emote_messages": 18, "total_emotes": 24, "emote_ratio": 0.64}
-    }
-  ],
-  "total_moments": 2
-}
-```
-
-**Moment types:**
-- `velocity_spike`: Sudden increase in messages per second compared to rolling baseline
-- `emote_flood`: High concentration of emotes in a time window (50%+ of messages contain emotes)
-
-### Speech Analysis
-
-Analyze a video file for speech-based clip moments using Whisper transcription:
-
-```bash
-# Basic usage
-curl -X POST http://localhost:8000/api/analyze/speech \
-  -H "Content-Type: application/json" \
-  -d '{"file_path": "vods/my_stream.mp4"}'
-
-# With custom model size
-curl -X POST http://localhost:8000/api/analyze/speech \
-  -H "Content-Type: application/json" \
-  -d '{
-    "file_path": "vods/my_stream.mp4",
-    "model_size": "small",
-    "language": "en"
-  }'
-```
-
-**Parameters:**
-- `file_path` (required): Path to video relative to `/data` folder
-- `model_size` (default: "base"): Whisper model size (tiny, base, small, medium, large)
-- `language` (default: "en"): Language code or empty for auto-detection
-
-**Response:**
-```json
-{
-  "file_path": "vods/my_stream.mp4",
-  "moments": [
-    {
-      "timestamp": 125.5,
-      "intensity": 1.8,
-      "duration": 3.0,
-      "moment_type": "keyword_match",
-      "details": {
-        "text": "oh my god no way",
-        "matched_keywords": ["oh my god", "no way"],
-        "keyword_score": 2.0
-      }
-    },
-    {
-      "timestamp": 342.0,
-      "intensity": 1.5,
-      "duration": 5.0,
-      "moment_type": "speech_rate_spike",
-      "details": {
-        "text": "and then I just ran in and killed all three...",
-        "words_per_minute": 210,
-        "baseline_wpm": 140
-      }
-    }
-  ],
-  "total_moments": 2,
-  "transcript_segments": [...],
-  "config": {...}
-}
-```
-
-**Moment types:**
-- `keyword_match`: Detected excitement phrases like "oh my god", "let's go", "no way"
-- `speech_rate_spike`: Speaking 1.5x+ faster than baseline (indicates excitement)
-
-**SSE Streaming (for long VODs):**
-
-```bash
-curl "http://localhost:8000/api/analyze/speech/stream?file_path=vods/my_stream.mp4"
-```
-
-Returns Server-Sent Events with progress updates during transcription.
-
-### Full Analysis (Fusion)
-
-Run the complete pipeline: audio analysis + chat analysis + signal fusion to get ranked clip candidates:
-
-```bash
-# Basic usage
-curl -X POST http://localhost:8000/api/analyze/full \
-  -H "Content-Type: application/json" \
-  -d '{
-    "video_path": "vods/my_stream.mp4",
-    "chat_path": "chats/my_stream_chat.json"
-  }'
-
-# With custom parameters
-curl -X POST http://localhost:8000/api/analyze/full \
-  -H "Content-Type: application/json" \
-  -d '{
-    "video_path": "vods/my_stream.mp4",
-    "chat_path": "chats/my_stream_chat.json",
-    "overlap_window": 10.0,
-    "clip_buffer": 30.0
-  }'
+  -d '{}'
 
 # With speech analysis enabled
-curl -X POST http://localhost:8000/api/analyze/full \
+curl -X POST http://localhost:8000/api/vods/{vod_id}/analyze \
   -H "Content-Type: application/json" \
   -d '{
-    "video_path": "vods/my_stream.mp4",
-    "chat_path": "chats/my_stream_chat.json",
     "include_speech": true,
-    "speech_model_size": "base"
+    "speech_model_size": "base",
+    "clip_buffer": 30.0
   }'
 ```
 
-**Parameters:**
-- `video_path` (required): Path to video file relative to `/data` folder
-- `chat_path` (required): Path to chat JSON file relative to `/data` folder
+**Parameters** (all optional):
 - `overlap_window` (default: 10.0): Signals within this many seconds are combined
 - `clip_buffer` (default: 30.0): Seconds before and after the moment to include
-- `include_speech` (default: false): Enable speech transcription and keyword detection
-- `speech_model_size` (default: "base"): Whisper model size when speech is enabled
+- `include_speech` (default: false): Enable Whisper transcription and keyword detection
+- `speech_model_size` (default: "base"): Whisper model size (tiny, base, small, medium, large)
+- `speech_language` (default: "en"): Language code, or empty for auto-detection
+- `include_clips` (default: true): Fold published Twitch clips into the ranking
+- Weight overrides: `audio_weight`, `chat_weight`, `audio_threshold_multiplier`,
+  `chat_threshold`, `audio_intensity_cap`, `synergy_bonus`, `min_score`,
+  `speech_keyword_weight`, `speech_rate_weight`, `clip_popular_weight`,
+  `clip_density_weight`
 
 **Response:**
 ```json
@@ -326,6 +167,14 @@ curl -X POST http://localhost:8000/api/analyze/full \
 }
 ```
 
+**Signal types:**
+- `audio`: Loudness exceeding the rolling average by `audio_threshold_multiplier`
+- `velocity_spike`: Sudden increase in chat messages per second versus the rolling baseline
+- `emote_flood`: High concentration of emotes in a window (50%+ of messages contain emotes)
+- `keyword_match`: Excitement phrases like "oh my god", "let's go", "no way" (speech enabled)
+- `speech_rate_spike`: Speaking 1.5x+ faster than baseline (speech enabled)
+- `clip_popular` / `clip_density`: Derived from published Twitch clips over the VOD
+
 **Scoring:**
 - Audio spikes: base weight 1.0 × intensity
 - Chat velocity spikes: base weight 1.5 × intensity (strong signal)
@@ -336,7 +185,7 @@ curl -X POST http://localhost:8000/api/analyze/full \
 - Candidates within 30 seconds are deduplicated (highest score wins)
 - Results are sorted by score descending
 
-### Clip Export
+### Clip export
 
 Export a clip segment from a VOD using FFmpeg:
 
@@ -369,8 +218,39 @@ curl -X POST http://localhost:8000/api/clips/export \
 
 Uses stream copy (`-c copy`) for fast extraction, falling back to re-encoding if needed.
 
+## Checks
+
+Run the backend tests from the repository root:
+
+```bash
+cd backend
+source venv/bin/activate
+python -m unittest discover -s tests -v
+```
+
+Run the frontend checks:
+
+```bash
+cd frontend
+npm run lint
+npm run build
+```
+
+Build the optional Pi notifier:
+
+```bash
+cd pi-notifier
+bun run build:node
+```
+
 ## Development
 
 - Backend uses FastAPI with automatic reload
 - Frontend uses Next.js App Router with TypeScript
 - CORS is configured to allow frontend-backend communication on localhost
+
+## Copyright
+
+Copyright (c) 2026 Asher Harris. All rights reserved.
+
+The source code is available for portfolio review. [GitHub's Terms of Service](https://docs.github.com/en/site-policy/github-terms/github-terms-of-service) grant limited rights for public repositories. No other permission is granted to use, copy, modify, or distribute this software.

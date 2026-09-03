@@ -20,20 +20,6 @@ export function formatTimeRange(start: number, end: number): string {
 }
 
 /**
- * Parse time string (MM:SS or HH:MM:SS) to seconds
- */
-export function parseTime(timeStr: string): number | null {
-  const parts = timeStr.split(":").map(Number);
-  if (parts.some(isNaN)) return null;
-
-  if (parts.length === 2) {
-    return parts[0] * 60 + parts[1];
-  } else if (parts.length === 3) {
-    return parts[0] * 3600 + parts[1] * 60 + parts[2];
-  }
-  return null;
-}
-
 /**
  * Format duration in a human-readable way
  */

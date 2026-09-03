@@ -1,5 +1,6 @@
 # Python
 venv/
+.venv/
 __pycache__/
 *.pyc
 .env
@@ -13,6 +14,7 @@ data/vods/*
 data/chats/*
 data/clips/*
 data/twitch/*
+data/profiles/*.json
 !data/vods/.gitkeep
 !data/chats/.gitkeep
 !data/clips/.gitkeep
